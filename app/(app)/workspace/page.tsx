@@ -1,0 +1,783 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import TemplateCardSelect from "@/app/components/TemplateCardSelect";
+import { templates } from "../../../lib/templates";
+
+type Mode = "start" | "project";
+type StartTab = "my" | "shared" | "templates";
+type Msg = { role: "user" | "assistant"; content: string };
+
+export default function Workspace() {
+  const [mode, setMode] = useState<Mode>("start");
+
+  // START mode
+  const [startTab, setStartTab] = useState<StartTab>("my");
+  const [startInput, setStartInput] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+
+  // PROJECT mode (chat)
+  const [messages, setMessages] = useState<Msg[]>([
+    {
+      role: "assistant",
+      content:
+        "Tell me what you want. Example: “Generate a formula sheet from my lecture notes (LaTeX + PDF)”",
+    },
+  ]);
+  const [projectInput, setProjectInput] = useState("");
+
+  // RESULT state
+  const [activeRightTab, setActiveRightTab] = useState<"preview" | "latex">("preview");
+
+  const [draftLatex, setDraftLatex] = useState("");
+  const [savedLatex, setSavedLatex] = useState("");
+  const [compiledLatex, setCompiledLatex] = useState(""); // last latex that produced current pdf
+
+  const [dirty, setDirty] = useState(false);
+  const previewOutdated = compiledLatex !== "" && compiledLatex !== savedLatex;
+
+  const [pdfUrl, setPdfUrl] = useState<string>(""); // object URL of last valid pdf
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isCompiling, setIsCompiling] = useState(false);
+
+  const [compileError, setCompileError] = useState<string>("");
+  const [compileLog, setCompileLog] = useState<string>("");
+
+  // AI fix
+  const [isFixing, setIsFixing] = useState(false);
+  const [fixCandidate, setFixCandidate] = useState<string>(""); // suggested fixed latex
+  const [showFixModal, setShowFixModal] = useState(false);
+
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (mode === "project") bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, mode]);
+
+  useEffect(() => {
+    return () => {
+      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const startContent = useMemo(() => {
+    if (startTab === "my") {
+      return (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Card title="New Project" subtitle="Create a new BetterNotes project" />
+          <Card title="Exam Cheatsheet" subtitle="Last edited 2h ago" />
+          <Card title="ML Notes" subtitle="Last edited yesterday" />
+        </div>
+      );
+    }
+    if (startTab === "shared") {
+      return (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Card title="QFT Summary (shared)" subtitle="Shared by Alice" />
+          <Card title="Linear Algebra Formulary" subtitle="Shared by Bob" />
+        </div>
+      );
+    }
+    return (
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <Card title="Formula Sheet" subtitle="Turn notes into a formula-only PDF" />
+        <Card title="Summary Notes" subtitle="Clean structured notes + definitions" />
+        <Card title="Flashcards" subtitle="Generate Q/A cards from notes" />
+      </div>
+    );
+  }, [startTab]);
+
+  function busy() {
+    return isGenerating || isCompiling || isFixing;
+  }
+
+  // ---------- Core actions ----------
+  const selectedTemplate = useMemo(() => {
+    return templates.find((t) => t.id === selectedTemplateId) ?? null;
+  }, [selectedTemplateId]);
+
+  async function generateLatexFromPrompt(
+    prompt: string,
+    templateId?: string | null
+  ): Promise<{ ok: true; latex: string } | { ok: false; error: string }> {
+    try {
+      setIsGenerating(true);
+      const payload: { prompt: string; templateId?: string } = { prompt };
+      if (templateId) payload.templateId = templateId;
+      const r = await fetch("/api/generate-latex", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) return { ok: false, error: data?.error ?? "Failed to generate LaTeX." };
+      const latex = (data?.latex ?? "").toString();
+      if (!latex.trim()) return { ok: false, error: "Model returned empty LaTeX." };
+      return { ok: true, latex };
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? "Generate error" };
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  async function compileSavedLatex(): Promise<{ ok: true } | { ok: false; error: string; log?: string }> {
+    if (!savedLatex.trim()) return { ok: false, error: "Nothing to compile." };
+
+    const res = await compileDirect(savedLatex);
+    if (res.ok) setCompiledLatex(savedLatex);
+    return res;
+  }
+
+  function saveDraft() {
+    setSavedLatex(draftLatex);
+    setDirty(false);
+  }
+
+  async function saveAndCompile() {
+    const toCompile = draftLatex; // compile what user sees
+    if (!toCompile.trim()) return { ok: false, error: "Nothing to compile." };
+
+    setSavedLatex(toCompile);
+    setDirty(false);
+    setCompileError("");
+    setCompileLog("");
+
+    const res = await compileDirect(toCompile);
+    if (res.ok) setCompiledLatex(toCompile);
+    return res;
+  }
+
+  async function fixWithAI() {
+    if (!savedLatex.trim() || !compileLog.trim()) return;
+
+    setIsFixing(true);
+    try {
+      const r = await fetch("/api/fix-latex", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          latex: savedLatex,
+          log: compileLog,
+        }),
+      });
+
+      const data = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(data?.error ?? "Fix failed.");
+
+      const fixed = (data?.fixedLatex ?? data?.latex ?? "").toString();
+      if (!fixed.trim()) throw new Error("Fix endpoint returned empty LaTeX.");
+
+      setFixCandidate(fixed);
+      setShowFixModal(true);
+    } catch (e: any) {
+      setCompileError(e?.message ?? "Fix error");
+    } finally {
+      setIsFixing(false);
+    }
+  }
+
+  async function applyFixAndCompile() {
+    if (!fixCandidate.trim()) return;
+
+    // Apply fix as new draft + saved
+    setDraftLatex(fixCandidate);
+    setSavedLatex(fixCandidate);
+    setDirty(false);
+    setShowFixModal(false);
+
+    // Clear previous compile error/log before recompiling
+    setCompileError("");
+    setCompileLog("");
+
+    await compileSavedLatex();
+  }
+
+  function downloadTex() {
+    const src = savedLatex || draftLatex;
+    if (!src.trim()) return;
+    const blob = new Blob([src], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "main.tex";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function downloadPdf() {
+    if (!pdfUrl) return;
+    const a = document.createElement("a");
+    a.href = pdfUrl;
+    a.download = "output.pdf";
+    a.click();
+  }
+
+  // ---------- Send flows ----------
+  async function startSend() {
+    const text = startInput.trim();
+    if (!text || busy()) return;
+
+    setMode("project");
+    setStartInput("");
+    setProjectInput("");
+
+    // seed chat
+    setMessages((m) => [
+      ...m,
+      { role: "user", content: text },
+      { role: "assistant", content: "Working… generating LaTeX and compiling PDF." },
+    ]);
+
+    // generate
+    const gen = await generateLatexFromPrompt(text, selectedTemplate?.id);
+    if (!gen.ok) {
+      setMessages((m) => replaceLastWorking(m, `Error: ${gen.error}`));
+      return;
+    }
+
+    // set latex states
+    setDraftLatex(gen.latex);
+    setSavedLatex(gen.latex);
+    setCompiledLatex(""); // unknown until compile success
+    setDirty(false);
+    setActiveRightTab("preview");
+
+    // compile
+    const comp = await (async () => {
+      // compile expects savedLatex; ensure it’s set
+      // (state update is async, so compile using direct value too)
+      setSavedLatex(gen.latex);
+      return await compileDirect(gen.latex);
+    })();
+
+    if (!comp.ok) {
+      setMessages((m) => replaceLastWorking(m, `Generated LaTeX, but compilation failed. Use “Fix with AI”.`));
+    } else {
+      setCompiledLatex(gen.latex);
+      setMessages((m) => replaceLastWorking(m, `Done. Preview updated on the right.`));
+    }
+  }
+
+  async function projectSend() {
+    const text = projectInput.trim();
+    if (!text || busy()) return;
+
+    setProjectInput("");
+
+    setMessages((m) => [
+      ...m,
+      { role: "user", content: text },
+      { role: "assistant", content: "Working… generating LaTeX and compiling PDF." },
+    ]);
+
+    const gen = await generateLatexFromPrompt(text, selectedTemplate?.id);
+    if (!gen.ok) {
+      setMessages((m) => replaceLastWorking(m, `Error: ${gen.error}`));
+      return;
+    }
+
+    setDraftLatex(gen.latex);
+    setSavedLatex(gen.latex);
+    setDirty(false);
+    setActiveRightTab("preview");
+
+    const comp = await compileDirect(gen.latex);
+    if (!comp.ok) {
+      setMessages((m) => replaceLastWorking(m, `Generated LaTeX, but compilation failed. Use “Fix with AI”.`));
+    } else {
+      setCompiledLatex(gen.latex);
+      setMessages((m) => replaceLastWorking(m, `Done. Preview updated on the right.`));
+    }
+  }
+
+  // helper: compile a direct latex string (avoids relying on async state)
+  async function compileDirect(latex: string): Promise<{ ok: true } | { ok: false; error: string; log?: string }> {
+    setCompileError("");
+    setCompileLog("");
+
+    try {
+      setIsCompiling(true);
+
+      const r = await fetch("/api/compile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ latex }),
+      });
+
+      if (!r.ok) {
+        const data = await r.json().catch(() => null);
+        const errMsg = data?.error ?? "Compilation failed.";
+        const log = data?.log ?? "";
+        setCompileError(errMsg);
+        setCompileLog(log);
+        return { ok: false, error: errMsg, log };
+      }
+
+      const buf = await r.arrayBuffer();
+      const blob = new Blob([buf], { type: "application/pdf" });
+
+      setPdfUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(blob);
+      });
+
+      setCompileError("");
+      setCompileLog("");
+      return { ok: true };
+    } catch (e: any) {
+      const msg = e?.message ?? "Compile error";
+      setCompileError(msg);
+      return { ok: false, error: msg };
+    } finally {
+      setIsCompiling(false);
+    }
+  }
+
+  function replaceLastWorking(m: Msg[], newText: string) {
+    const copy = [...m];
+    for (let i = copy.length - 1; i >= 0; i--) {
+      if (copy[i].role === "assistant" && copy[i].content.includes("Working…")) {
+        copy[i] = { role: "assistant", content: newText };
+        break;
+      }
+    }
+    return copy;
+  }
+
+  // ---------- RENDER ----------
+  if (mode === "project") {
+    const canSaveAndCompile = draftLatex.trim().length > 0 && !busy();
+
+    return (
+      <main className="min-h-screen text-white">
+        <div className="grid grid-cols-1 lg:grid-cols-[420px_1fr] min-h-screen">
+          {/* LEFT: chat */}
+          <aside className="border-r border-white/10 bg-white/5 backdrop-blur flex flex-col">
+            <div className="px-4 py-4 border-b border-white/10 flex items-center justify-between">
+              <div>
+                <div className="text-sm font-semibold">Project</div>
+                <div className="text-xs text-white/60">Chat → LaTeX → PDF</div>
+              </div>
+              <button
+                onClick={() => setMode("start")}
+                className="text-xs rounded-xl border border-white/15 bg-white/10 px-2 py-1 hover:bg-white/15"
+              >
+                ← Back
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto px-4 py-4 space-y-3">
+              {messages.map((m, idx) => (
+                <div
+                  key={idx}
+                  className={[
+                    "max-w-[92%] rounded-2xl px-3 py-2 text-sm leading-relaxed border",
+                    m.role === "user"
+                      ? "ml-auto bg-white/10 border-white/15"
+                      : "mr-auto bg-black/20 border-white/10",
+                  ].join(" ")}
+                >
+                  {m.content}
+                </div>
+              ))}
+              <div ref={bottomRef} />
+            </div>
+
+            <div className="p-4 border-t border-white/10">
+              <div className="flex items-center gap-2">
+                <button
+                  className="h-10 w-10 rounded-xl border border-white/15 bg-white/10 hover:bg-white/15"
+                  title="Attach (next step)"
+                  disabled
+                >
+                  +
+                </button>
+
+                <input
+                  value={projectInput}
+                  onChange={(e) => setProjectInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) projectSend();
+                  }}
+                  className="h-10 flex-1 rounded-xl border border-white/15 bg-black/20 px-3 text-sm outline-none placeholder:text-white/45 text-white"
+                  placeholder="Ask BetterNotes to create…"
+                />
+
+                <button
+                  onClick={projectSend}
+                  disabled={projectInput.trim().length === 0 || busy()}
+                  className={[
+                    "h-10 rounded-xl px-4 text-sm font-semibold",
+                    projectInput.trim().length > 0 && !busy()
+                      ? "bg-white text-neutral-950 hover:bg-white/90"
+                      : "bg-white/20 text-white/60 cursor-not-allowed",
+                  ].join(" ")}
+                >
+                  {isGenerating ? "Generating…" : isCompiling ? "Compiling…" : isFixing ? "Fixing…" : "Send"}
+                </button>
+              </div>
+            </div>
+          </aside>
+
+          {/* RIGHT: result */}
+          <section className="flex flex-col">
+            <div className="px-5 py-4 border-b border-white/10 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold">Result</div>
+                <div className="text-xs text-white/60">
+                  {draftLatex
+                    ? previewOutdated
+                      ? "Preview is outdated — run Save & Compile to update."
+                      : "PDF preview is up to date."
+                    : "Send a prompt to generate LaTeX + PDF."}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setActiveRightTab("preview")}
+                  className={[
+                    "rounded-xl px-3 py-2 text-sm border",
+                    activeRightTab === "preview"
+                      ? "bg-white text-neutral-950 border-white"
+                      : "bg-white/10 text-white/85 border-white/15 hover:bg-white/15",
+                  ].join(" ")}
+                >
+                  Preview
+                </button>
+
+                <button
+                  onClick={() => setActiveRightTab("latex")}
+                  className={[
+                    "rounded-xl px-3 py-2 text-sm border",
+                    activeRightTab === "latex"
+                      ? "bg-white text-neutral-950 border-white"
+                      : "bg-white/10 text-white/85 border-white/15 hover:bg-white/15",
+                  ].join(" ")}
+                >
+                  LaTeX
+                </button>
+
+                <div className="w-px h-7 bg-white/10 mx-1" />
+
+                <button
+                  onClick={saveAndCompile}
+                  disabled={!canSaveAndCompile}
+                  className={[
+                    "rounded-xl px-3 py-2 text-sm font-semibold",
+                    canSaveAndCompile
+                      ? "bg-white text-neutral-950 hover:bg-white/90"
+                      : "bg-white/20 text-white/60 cursor-not-allowed",
+                  ].join(" ")}
+                >
+                  Compile
+                </button>
+
+                <div className="w-px h-7 bg-white/10 mx-1" />
+
+                <button
+                  onClick={downloadTex}
+                  disabled={!draftLatex.trim()}
+                  className="rounded-xl px-3 py-2 text-sm border border-white/15 bg-white/10 hover:bg-white/15 disabled:opacity-40"
+                >
+                  .tex
+                </button>
+
+                <button
+                  onClick={downloadPdf}
+                  disabled={!pdfUrl}
+                  className="rounded-xl px-3 py-2 text-sm border border-white/15 bg-white/10 hover:bg-white/15 disabled:opacity-40"
+                >
+                  PDF
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 p-5 flex flex-col gap-3">
+              {/* main viewer/editor */}
+              <div className="flex-1 rounded-2xl border border-white/10 bg-white/5 backdrop-blur overflow-hidden">
+                {activeRightTab === "preview" ? (
+                  pdfUrl ? (
+                    <iframe title="PDF Preview" src={pdfUrl} className="w-full h-full" />
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-white/60 text-sm">
+                      No PDF yet. Send a prompt on the left.
+                    </div>
+                  )
+                ) : (
+                  <textarea
+                    value={draftLatex}
+                    onChange={(e) => {
+                      setDraftLatex(e.target.value);
+                      setDirty(e.target.value !== savedLatex);
+                    }}
+                    className="w-full h-full bg-transparent p-4 font-mono text-sm outline-none text-white/90"
+                    placeholder="LaTeX will appear here…"
+                  />
+                )}
+              </div>
+
+
+              {/* compile error panel */}
+              {compileError ? (
+                <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-semibold text-red-200">Compilation failed</div>
+                      <div className="text-xs text-red-200/80 mt-1">{compileError}</div>
+                      {pdfUrl ? (
+                        <div className="text-xs text-white/60 mt-2">
+                          Showing last valid PDF preview. Fix and recompile to update.
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setCompileError("");
+                          setCompileLog("");
+                        }}
+                        className="rounded-xl px-3 py-2 text-sm border border-white/15 bg-white/10 hover:bg-white/15"
+                      >
+                        Dismiss
+                      </button>
+
+                      <button
+                        onClick={fixWithAI}
+                        disabled={!compileLog.trim() || busy()}
+                        className={[
+                          "rounded-xl px-3 py-2 text-sm font-semibold",
+                          compileLog.trim() && !busy()
+                            ? "bg-white text-neutral-950 hover:bg-white/90"
+                            : "bg-white/20 text-white/60 cursor-not-allowed",
+                        ].join(" ")}
+                      >
+                        {isFixing ? "Fixing…" : "Fix with AI"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {compileLog ? (
+                    <pre className="mt-3 max-h-44 overflow-auto rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-white/75">
+                      {compileLog}
+                    </pre>
+                  ) : (
+                    <div className="mt-3 text-xs text-white/60">
+                      (No compiler log available. Make sure your /api/compile returns JSON with a “log” field on error.)
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          </section>
+        </div>
+
+        {/* Fix modal */}
+        {showFixModal ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/60" onClick={() => setShowFixModal(false)} />
+            <div className="relative w-full max-w-4xl rounded-2xl border border-white/15 bg-neutral-950/90 backdrop-blur p-4 shadow-[0_20px_60px_rgba(0,0,0,0.6)]">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold">AI Fix suggestion</div>
+                  <div className="text-xs text-white/60 mt-1">
+                    Review the fixed LaTeX. Apply it if it looks good.
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowFixModal(false)}
+                  className="rounded-xl px-3 py-2 text-sm border border-white/15 bg-white/10 hover:bg-white/15"
+                >
+                  Close
+                </button>
+              </div>
+
+              <textarea
+                value={fixCandidate}
+                onChange={(e) => setFixCandidate(e.target.value)}
+                className="mt-4 w-full h-[50vh] rounded-2xl border border-white/10 bg-black/30 p-4 font-mono text-sm outline-none text-white/90"
+              />
+
+              <div className="mt-3 flex items-center justify-end gap-2">
+                <button
+                  onClick={() => setShowFixModal(false)}
+                  className="rounded-xl px-3 py-2 text-sm border border-white/15 bg-white/10 hover:bg-white/15"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={applyFixAndCompile}
+                  className="rounded-xl px-4 py-2 text-sm font-semibold bg-white text-neutral-950 hover:bg-white/90"
+                >
+                  Apply fix & Compile
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </main>
+    );
+  }
+
+  // -------- START MODE (initial UI) --------
+  return (
+    <main className="relative min-h-screen text-white">
+      <div className="mx-auto max-w-5xl px-4 pt-16 pb-44">
+        <div className="text-center">
+          <h1 className="mt-6 text-3xl sm:text-5xl font-semibold tracking-tight">
+            What should we build?
+          </h1>
+          <p className="mt-3 text-white/70">
+            Example: “Generate a formula sheet from my lecture notes (LaTeX + PDF)”.
+          </p>
+        </div>
+
+        {/* Input box */}
+        <div className="mt-10 mx-auto max-w-3xl rounded-2xl border border-white/15 bg-white/10 p-3 backdrop-blur shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_20px_60px_rgba(0,0,0,0.35)]">
+          <div className="flex items-center gap-2">
+            <button
+              className="h-10 w-10 rounded-xl border border-white/15 bg-white/10 hover:bg-white/15 flex items-center justify-center"
+              title="Attach (coming soon)"
+              disabled
+            >
+              <span className="text-lg">＋</span>
+            </button>
+
+            <input
+              value={startInput}
+              onChange={(e) => setStartInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) startSend();
+              }}
+              className="h-10 flex-1 rounded-xl border border-white/15 bg-black/20 px-3 text-sm outline-none placeholder:text-white/45 text-white"
+              placeholder="Ask BetterNotes to create a project that..."
+            />
+
+            <button
+              onClick={startSend}
+              disabled={startInput.trim().length === 0 || busy()}
+              className={[
+                "h-10 rounded-xl px-4 text-sm font-semibold",
+                startInput.trim().length > 0 && !busy()
+                  ? "bg-white text-neutral-950 hover:bg-white/90"
+                  : "bg-white/20 text-white/60 cursor-not-allowed",
+              ].join(" ")}
+            >
+              {isGenerating ? "Generating…" : isCompiling ? "Compiling…" : isFixing ? "Fixing…" : "Send"}
+            </button>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Chip onClick={() => setStartInput("Turn my PDF into a formula sheet (LaTeX + PDF).")}>
+              Formula sheet
+            </Chip>
+            <Chip onClick={() => setStartInput("Summarize these notes into clean sections with definitions.")}>
+              Summary notes
+            </Chip>
+            <Chip onClick={() => setStartInput("Extract only theorems/definitions and key equations.")}>
+              Key results
+            </Chip>
+          </div>
+        </div>
+
+        {/* Recommended Templates */}
+        <div className="mt-8 mx-auto max-w-4xl">
+          <div className="flex flex-col items-center text-center">
+            <h2 className="text-lg font-semibold text-white">Recommended Templates</h2>
+            <p className="text-sm text-white/60">Pick one to start faster</p>
+            <Link href="/templates" className="mt-2 text-sm text-white/70 hover:text-white">
+              View all →
+            </Link>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {templates.map((t) => (
+              <TemplateCardSelect
+                key={t.id}
+                t={t as any}
+                selected={selectedTemplateId === t.id}
+                onSelect={() =>
+                  setSelectedTemplateId((current) => (current === t.id ? null : t.id))
+                }
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom tabs */}
+      <div className="fixed left-0 right-0 bottom-0 md:left-64">
+        <div className="mx-auto max-w-6xl px-4 pb-4">
+          <div className="rounded-2xl border border-white/15 bg-white/10 backdrop-blur p-3 shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_20px_60px_rgba(0,0,0,0.35)]">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex gap-2">
+                <TabButton active={startTab === "my"} onClick={() => setStartTab("my")}>
+                  My projects
+                </TabButton>
+                <TabButton active={startTab === "shared"} onClick={() => setStartTab("shared")}>
+                  Shared with me
+                </TabButton>
+                <TabButton active={startTab === "templates"} onClick={() => setStartTab("templates")}>
+                  Templates
+                </TabButton>
+              </div>
+              <button className="text-sm text-white/70 hover:text-white">Browse all →</button>
+            </div>
+
+            <div className="mt-4">{startContent}</div>
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+/* ---------------- UI bits ---------------- */
+
+function TabButton({
+  children,
+  active,
+  onClick,
+}: {
+  children: React.ReactNode;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={[
+        "rounded-xl px-3 py-2 text-sm border",
+        active
+          ? "bg-white text-neutral-950 border-white"
+          : "bg-white/10 text-white/85 border-white/15 hover:bg-white/15",
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Chip({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs text-white/80 hover:bg-white/15"
+    >
+      {children}
+    </button>
+  );
+}
+
+function Card({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <div className="rounded-2xl border border-white/12 bg-white/8 p-4 hover:bg-white/12 cursor-pointer backdrop-blur">
+      <div className="text-sm font-semibold text-white">{title}</div>
+      <div className="mt-1 text-xs text-white/60">{subtitle}</div>
+    </div>
+  );
+}

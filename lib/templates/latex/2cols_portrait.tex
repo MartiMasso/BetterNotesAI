@@ -1,0 +1,419 @@
+\documentclass[10pt]{article}
+
+\usepackage[margin=0.45in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{multicol}
+\usepackage{enumitem}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.15em}
+\setlength{\columnsep}{0.35cm}
+
+% tighter math spacing
+\setlength{\abovedisplayskip}{0.25em}
+\setlength{\belowdisplayskip}{0.25em}
+\setlength{\abovedisplayshortskip}{0.15em}
+\setlength{\belowdisplayshortskip}{0.15em}
+
+\setlist[itemize]{leftmargin=1.1em,itemsep=0.1em,topsep=0.1em}
+\setlist[enumerate]{leftmargin=1.1em,itemsep=0.1em,topsep=0.1em}
+
+\newcommand{\HR}{\vspace{0.15em}\hrule\vspace{0.25em}}
+
+% Robust box: safe wrapping + correct inner width
+\newlength{\MyBoxW}
+\newcommand{\MyBox}[1]{%
+\setlength{\fboxsep}{2.5pt}%
+\setlength{\MyBoxW}{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}%
+\noindent\fbox{\begin{minipage}[t]{\MyBoxW}\raggedright #1\end{minipage}}%
+}
+
+\sloppy
+\emergencystretch=2em
+
+% handy
+\newcommand{\slashed}[1]{#1\!\!\!/}
+\newcommand{\Qtwo}{Q^2}
+\newcommand{\Nc}{N_c}
+\newcommand{\as}{\alpha_s}
+\newcommand{\gs}{g_s}
+
+\begin{document}
+\pagestyle{empty}
+{\Large\bfseries Topic 6 --- QED for Hadrons \hfill \normalsize Cheat-Sheet (2 cols)}\HR
+
+\begin{multicols}{2}
+\footnotesize
+
+%==========================================================
+\MyBox{
+\textbf{Big picture (slides logic)}\\
+Hadrons are \textbf{composite} (made of quarks), so in EM processes the hadronic EM current is a QCD current:
+\[
+j^\mu_{\rm QCD}=\sum_{j=u,d,s,\dots} q_j\,\bar\psi_j\gamma^\mu\psi_j,\qquad \partial_\mu j^\mu_{\rm QCD}=0.
+\]
+We handle compositeness by:
+\begin{itemize}
+\item \textbf{Form factors} (low/intermediate energies): parameterize matrix elements using symmetries.
+\item \textbf{DIS/parton model} (large $Q^2$): photons see quasi-free point-like constituents (partons).
+\item \textbf{QCD} (underlying theory): local $SU(3)$ color gauge theory with gluons (neutral partons), asymptotic freedom, chiral symmetry (approx.).
+\end{itemize}
+}
+
+\HR
+%==========================================================
+\textbf{6.1 Composite particles: EM current \& form factors}\\[-0.2em]
+Elementary QED (many flavors):
+\[
+\mathcal L_{\rm QED}=-\frac14F_{\mu\nu}F^{\mu\nu}+\sum_{j=1}^n \bar\psi_j(i\gamma^\mu D_\mu^j-m_j)\psi_j,
+\quad D_\mu^j=\partial_\mu+i q_j A_\mu.
+\]
+Global rephasings $\psi_j\to e^{i\theta_j}\psi_j$ ($\theta_j\neq \theta_j(x)$) $\Rightarrow$ $n$ conserved flavor charges.\\
+Interaction:
+\[
+\mathcal L_I=-\sum_{j=1}^n q_j\,\bar\psi_j\gamma^\mu A_\mu\psi_j \equiv - j^\mu A_\mu.
+\]
+For hadrons: replace ``hadron EM current'' by $j^\mu_{\rm QCD}$ and \textbf{parameterize} unknown QCD matrix elements.
+
+\HR
+%==========================================================
+\textbf{Pion EM form factor: $e^-e^+\to \pi^+\pi^-$}\\[-0.2em]
+Need matrix element (unknown in QCD):
+\[
+\langle \pi^+(\vec p_1)\pi^-(\vec p_2)|\,j^\nu_{\rm QCD}(x)\,|0\rangle.
+\]
+Use translation invariance ($P^\mu$ momentum operator):
+\[
+\langle \pi\pi|j^\nu_{\rm QCD}(x)|0\rangle
+=e^{-i(p_1+p_2)\cdot x}\langle \pi\pi|j^\nu_{\rm QCD}(0)|0\rangle.
+\]
+Lorentz invariance:
+\[
+\langle \pi\pi|j^\nu_{\rm QCD}(0)|0\rangle
+=e(p_1+p_2)^\nu \tilde F_\pi(s)+e(p_2-p_1)^\nu F_\pi(s),
+\quad s=(p_1+p_2)^2.
+\]
+Current conservation $(p_1+p_2)_\nu j^\nu=0$:
+\[
+0=(p_1+p_2)_\nu \langle \pi\pi|j^\nu|0\rangle=2s\,\tilde F_\pi(s)\;\Rightarrow\;\tilde F_\pi(s)=0.
+\]
+
+\MyBox{
+\textbf{Result (pion)}\\[-0.2em]
+\[
+\boxed{\ \langle \pi^+\pi^-|j^\nu_{\rm QCD}(0)|0\rangle
+=e(p_2-p_1)^\nu F_\pi(s)\ }
+\]
+All compositeness is encoded in \(\boxed{F_\pi(s)}\).\\
+Low energy: pion looks pointlike $\Rightarrow F_\pi(s)\simeq 1$ for $s\lesssim 4m_\pi^2$ (slides statement).
+}
+
+\HR
+%==========================================================
+\textbf{Proton form factors: $e^-p\to e^-p$}\\[-0.2em]
+Need
+\[
+\langle p(\vec p_2,\lambda_2)|\,j^\nu_{\rm QCD}(x)\,|p(\vec p_B,\lambda_B)\rangle
+=e^{-i(p_2-p_B)\cdot x}\,\bar u_{\lambda_2}(\vec p_2)\,D^\nu(p_2,p_B)\,u_{\lambda_B}(\vec p_B),
+\]
+with $q\equiv p_2-p_B$ ($q^2=t$).\\
+Most general Dirac structure + discrete symmetries; parity $\Rightarrow$ remove $\gamma_5$ terms; current conservation $q_\nu j^\nu=0$ reduces to \textbf{two} independent form factors. Using Gordon identity, choose:
+\[
+\boxed{\ D^\nu(p_2,p_B)=e\,F_1(q^2)\gamma^\nu+\frac{e}{2m_p}\,F_2(q^2)\,i\sigma^{\nu\rho}q_\rho\ }.
+\]
+Low $q^2\simeq 0$:
+\[
+F_1(0)\simeq 1,\quad F_2(0)\simeq \kappa_p=\frac{g_p}{2}-1\simeq 1.79
+\quad (\text{neutron: }F_1(0)\simeq 0,\ F_2(0)\simeq \kappa_n\simeq -1.91).
+\]
+Non-minimal Pauli term (unique dim-5, gauge/Lorentz/discrete symm.):
+\[
+\delta\mathcal L=\frac{e\,\kappa_p}{2m_p}\,\bar\psi\,\sigma_{\mu\nu}F^{\mu\nu}\psi.
+\]
+
+\HR
+%==========================================================
+\textbf{Unpolarized $e^-p\to e^-p$: hadronic tensor form}\\[-0.2em]
+Instead of amplitude-level form factors, for unpolarized scattering define:
+\[
+e^2 L^{\mu\nu}_p(p_B,p_2)=\frac12\sum_{\lambda_B=\pm}\sum_{\lambda_2=\pm}
+\langle p_2,\lambda_2|j^\mu_{\rm QCD}(0)|p_B,\lambda_B\rangle
+\langle p_2,\lambda_2|j^\nu_{\rm QCD}(0)|p_B,\lambda_B\rangle^\ast .
+\]
+Lorentz + parity:
+\[
+L^{\mu\nu}_p
+=-2m_p^2G_1 g^{\mu\nu}+G_2 p^\mu p^\nu+G_3 q^\mu q^\nu+G_4(p^\mu q^\nu+q^\mu p^\nu),
+\quad p\equiv p_B+p_2.
+\]
+Current conservation $q_\mu L^{\mu\nu}_p=0$:
+\[
+G_4=0,\qquad G_3=\frac{2m_p^2}{q^2}G_1,
+\]
+so
+\[
+\boxed{\ L^{\mu\nu}_p
+=2m_p^2G_1\Big(-g^{\mu\nu}+\frac{q^\mu q^\nu}{q^2}\Big)+G_2\,p^\mu p^\nu\ }.
+\]
+
+Leptonic tensor:
+\[
+L^{\mu\nu}_e(p_A,p_1)= -q^2\Big(-g^{\mu\nu}+\frac{q^\mu q^\nu}{q^2}\Big)+(p_A+p_1)^\mu(p_A+p_1)^\nu,
+\quad q=p_A-p_1.
+\]
+Matrix element squared:
+\[
+|\mathcal M|^2=\frac{e^4}{q^4}\,L^{\mu\nu}_e L_{\mu\nu}^p.
+\]
+
+\HR
+%==========================================================
+\textbf{LAB cross section and Sachs form factors}\\[-0.2em]
+Slides give (unpolarized, LAB):
+\[
+L^{\mu\nu}_e L_{\mu\nu}^p\Big|_{\rm LAB}
+=16m_p^2 E_A E_1\Big(G_1\sin^2\frac{\theta}{2}+G_2\cos^2\frac{\theta}{2}\Big),
+\]
+\[
+\boxed{\ \Big(\frac{d\sigma}{d\Omega}\Big)_{\rm LAB}
+=\frac{\alpha^2 E_1^2}{4E_A^3\sin^4(\theta/2)}
+\Big(G_2\cos^2\frac{\theta}{2}+G_1\sin^2\frac{\theta}{2}\Big)\ }.
+\]
+Often reparameterize:
+\[
+G_2=\frac{G_E^2-\frac{q^2}{4m_p^2}G_M^2}{1-\frac{q^2}{4m_p^2}},
+\qquad
+G_1=-\frac{q^2}{2m_p^2}G_M^2,
+\qquad \Qtwo\equiv -q^2>0.
+\]
+Empirical (slides):
+\[
+G_E\simeq \frac{1}{1+\Qtwo/Q_0^2},\qquad
+G_M\simeq \frac{g_p}{2}\,G_E,\qquad Q_0^2\simeq 0.71~{\rm GeV}^2.
+\]
+
+\HR
+%==========================================================
+% --- 6.2 DIS block (wrapped so it never gets cut in 2 columns) ---
+\textbf{6.2 Deep Inelastic Scattering (DIS): $e^-p\to e^- + X$}\\[-0.2em]
+Final hadronic state $|f\rangle$ is \textbf{inclusive} (unobserved). Replace single-proton phase space by a sum over hadronic states:
+\begin{equation}
+\begin{aligned}
+&\sum_f \int \Big(\prod_f \frac{d^3\vec p_f}{(2\pi)^3 2E_f}\Big)\,
+\frac12\sum_{\lambda_B}\sum_{\lambda_f}
+\langle f|j^\mu_{\rm QCD}(0)|p_B,\lambda_B\rangle\,
+\langle f|j^\nu_{\rm QCD}(0)|p_B,\lambda_B\rangle^\ast \\
+&\hspace{3.3em}\times (2\pi)^4\delta^{(4)}\!\Big(p_A+p_B-p_1-\sum_f p_f\Big)
+\;\equiv\; 4\pi m_p\,W^{\mu\nu}(p_B,q).
+\end{aligned}
+\end{equation}
+
+with
+\[
+q=p_A-p_1,\qquad
+\nu\equiv \frac{q\cdot p_B}{m_p}=q^0=E_A-E_1\ (\text{LAB}),\qquad
+Q^2\equiv -q^2.
+\]
+
+Lorentz + parity + current conservation:
+\begin{equation}
+\boxed{%
+\begin{aligned}
+W^{\mu\nu}={}&W_1(Q^2,\nu)\Big(-g^{\mu\nu}+\frac{q^\mu q^\nu}{q^2}\Big)\\
+&+W_2(Q^2,\nu)\Big(p_B^\mu-\frac{p_B\!\cdot q}{q^2}q^\mu\Big)
+\Big(p_B^\nu-\frac{p_B\!\cdot q}{q^2}q^\nu\Big).
+\end{aligned}}
+\end{equation}
+
+Then (slides):
+\[
+L^{\mu\nu}_e W_{\mu\nu}=4E_AE_1\Big(W_2\cos^2\frac{\theta}{2}+2W_1\sin^2\frac{\theta}{2}\Big),
+\]
+\begin{equation}
+\boxed{%
+\Big(\frac{d\sigma}{dE_1\,d\Omega}\Big)_{\rm LAB}
+=\frac{4\alpha^2 E_1^2}{q^4}\Big(W_2(Q^2,\nu)\cos^2\frac{\theta}{2}
++2W_1(Q^2,\nu)\sin^2\frac{\theta}{2}\Big)}
+\end{equation}
+
+\HR
+%==========================================================
+\textbf{Bjorken scaling and variables}\\[-0.2em]
+For elementary fermion target (muon) the structure functions depend on
+\[
+\omega \equiv -\frac{2m\nu}{q^2}=\frac{2m\nu}{\Qtwo}
+\quad\Rightarrow\quad \nu W_2,\; 2mW_1 \text{ depend only on }\omega.
+\]
+SLAC data for $e^-p\to e^-+{\rm hadrons}$ show approximate scaling at large $\Qtwo$.
+
+Define DIS variables (slides):
+\[
+x\equiv \frac{\Qtwo}{2m_p\nu},\qquad
+y\equiv \frac{p_B\cdot q}{p_B\cdot p_A}.
+\]
+
+\HR
+%==========================================================
+\textbf{Parton model (slides)}\\[-0.2em]
+Proton = free partons with momentum fraction $x$:
+\[
+p_i = x\,p_B,\qquad f_i(x)\equiv \text{probability density that parton }i\text{ carries fraction }x.
+\]
+For spin-$1/2$ parton (slides) one finds the proton structure functions:
+\[
+F_2(x)=\sum_i f_i(x)\,Q_i^2\,x,\qquad
+F_1(x)=\sum_i f_i(x)\,Q_i^2\,\frac12,
+\]
+and
+\[
+\boxed{\ 2xF_1(x)=F_2(x)\ }\quad \text{(Callan--Gross, characteristic of spin-$1/2$ partons)}.
+\]
+If partons had spin $0$ (slides note): $F_1(x)=0$.
+
+At large $s\gg m_p$ (slides exercise result):
+\[
+\boxed{\ \frac{d\sigma}{dx\,dy}\simeq \frac{2\pi\alpha^2\,s}{q^4}\,F_2(x)\Big(1+(1-y)^2\Big)\ }.
+\]
+
+\HR
+%==========================================================
+\textbf{PDFs and quark content (slides)}\\[-0.2em]
+Assume partons are quarks and only $u,d,s$ relevant:
+\[
+\frac{F_2(x)}{x}=\Big(\frac{2}{3}\Big)^2\!\big(u+\bar u\big)
++\Big(\frac{1}{3}\Big)^2\!\big(d+\bar d\big)
++\Big(\frac{1}{3}\Big)^2\!\big(s+\bar s\big),
+\quad i(x)\equiv f_i(x).
+\]
+Split into valence + sea: $i(x)=i_v(x)+i_s(x)$. For proton/neutron: $s_v=0$ and (SU(3) sea assumption in slides) $u_s=d_s=s_s=\bar u_s=\bar d_s=\bar s_s\equiv s(x)$.
+
+Then (slides):
+\[
+\frac{F_2^p(x)}{x}=\Big(\frac{2}{3}\Big)^2 u_v(x)+\Big(\frac{1}{3}\Big)^2 d_v(x)+\frac{4}{3}s(x),
+\]
+\[
+\frac{F_2^n(x)}{x}=\Big(\frac{2}{3}\Big)^2 d_v(x)+\Big(\frac{1}{3}\Big)^2 u_v(x)+\frac{4}{3}s(x),
+\]
+\[
+\frac{F_2^p(x)}{F_2^n(x)}\xrightarrow{x\to 0}1,\qquad
+\frac{F_2^p(x)}{F_2^n(x)}\xrightarrow{x\to 1}\frac{4u_v+d_v}{4d_v+u_v},
+\quad \frac14\le \frac{F_2^p}{F_2^n}\le 4,
+\]
+\[
+\frac{F_2^p(x)}{x}-\frac{F_2^n(x)}{x}=\frac13\big(u_v(x)-d_v(x)\big).
+\]
+
+\MyBox{
+\textbf{Normalization \& momentum sum rules (slides)}\\[-0.2em]
+Valence number:
+\[
+\int_0^1 dx\,u_v(x)=2,\qquad \int_0^1 dx\,d_v(x)=1.
+\]
+Momentum:
+\[
+\boxed{\ 1=\int_0^1 dx\,x\big(u+\bar u+d+\bar d+s+\bar s+g(x)\big)\equiv I_{uv}+I_{dv}+6I_s+I_g\ }.
+\]
+Slides use measured
+\[
+I_p\equiv \int_0^1 dx\,F_2^p(x)\simeq 0.18,\qquad I_n\simeq 0.12
+\]
+to infer \(\boxed{4I_g>I_{uv}+I_{dv}}\): electrically neutral partons carry lots of momentum $\Rightarrow$ gluons.
+}
+
+Scaling violations: PDFs develop mild $Q^2$ dependence; strong at very low $x$ (slides remark).
+
+\HR
+%==========================================================
+\textbf{6.3 QCD (slides)}\\[-0.2em]
+Requirements listed in slides (summary):
+\begin{itemize}
+\item Quarks carry color $SU(3)$ and flavor; only color singlets physical.
+\item Approx.\ chiral symmetry $SU_L(N_f)\otimes SU_R(N_f)$ for small quark masses.
+\item Spontaneous chiral breaking to diagonal $SU(N_f)$.
+\item Asymptotic freedom: $\as(\mu)\to 0$ as $\mu\to\infty$ (quarks look free at high $Q^2$).
+\item Need neutral constituents (gluons) to satisfy momentum sum rule.
+\end{itemize}
+
+Color triplet quark field:
+\[
+q(x)=\begin{pmatrix}q_1\\ q_2\\ q_3\end{pmatrix},\qquad q\to g(x)q,\quad \bar q\to \bar q\,g^\dagger(x),\quad g(x)\in SU(3).
+\]
+Covariant derivative:
+\[
+D_\mu=\partial_\mu+i\gs\,G_\mu,\qquad
+G_\mu=T^a G_\mu^a,\quad G_\mu\to gG_\mu g^\dagger-\frac{i}{\gs}g\partial_\mu g^\dagger.
+\]
+Field strength (Yang--Mills):
+\[
+i\gs\,G_{\mu\nu}\equiv [D_\mu,D_\nu],\qquad
+G_{\mu\nu}=T^a G_{\mu\nu}^a,\quad
+G_{\mu\nu}^a=\partial_\mu G_\nu^a-\partial_\nu G_\mu^a-\gs f^{abc}G_\mu^b G_\nu^c,
+\]
+\[
+\mathcal L_{\rm YM}=-\frac12\mathrm{tr}(G_{\mu\nu}G^{\mu\nu})=-\frac14 G_{\mu\nu}^a G^{a\,\mu\nu}.
+\]
+\[
+\boxed{\ \mathcal L_{\rm QCD}= -\frac14 G_{\mu\nu}^a G^{a\,\mu\nu}+\sum_{j=u,d,s,\dots}\bar q_j(i\slashed D-m_j)q_j\ }.
+\]
+Unlike QED, QCD has gluon self-interactions. Flavor rephasings $q_j\to e^{i\theta_j}q_j$ (global) $\Rightarrow$ flavor conserved. For $m_j=0$, chiral symmetry $SU_L(N_f)\otimes SU_R(N_f)$.
+
+\HR
+%==========================================================
+\textbf{$R(e^-e^+\to{\rm hadrons})$ (duality)}\\[-0.2em]
+Define (slides):
+\[
+\boxed{\ R\equiv \frac{\sigma(e^-e^+\to{\rm hadrons})}{\sigma(e^-e^+\to \mu^+\mu^-)}\ }.
+\]
+Duality hypothesis at high energy:
+\[
+\sigma(e^-e^+\to{\rm hadrons})\simeq \sigma(e^-e^+\to{\rm quarks+gluons})
+\simeq \sum_{j}\sigma(e^-e^+\to q_j\bar q_j)\quad (\sqrt s\gg 2m_j).
+\]
+Hence
+\[
+\boxed{\ R\simeq \sum_{j=u,d,s,\dots} Q_j^2\,\Nc\ }.
+\]
+Slides list stepwise predictions as thresholds open (e.g.\ $u,d,s$ then add $c$, then $b$, then $t$).
+
+\HR
+%==========================================================
+\textbf{Heavy quarks: NRQCD, HQET, quarkonium (slides)}\\[-0.2em]
+For heavy $m_Q\gg \Lambda_{\rm QCD}$, $\as(m_Q)$ small and motion non-relativistic:
+\[
+\boxed{\ \mathcal L_{\rm NRQCD}= \psi^\dagger\Big(iD_0+\frac{\vec D^{\,2}}{2m_Q}+\vec\mu\cdot \vec B+\cdots\Big)\psi,\qquad \vec\mu\sim \frac{\gs}{m_Q}\vec S\ }.
+\]
+Heavy--light hadron $H=(Q\,l)$ (slides):
+\[
+\mathcal L_{\rm HQET}\simeq \psi^\dagger iD_0\psi,\qquad
+\boxed{\ M_H=m_Q+\Lambda_l^0+\mathcal O\!\Big(\frac{1}{m_Q}\Big)\ },
+\quad
+\boxed{\ M_{H^\ast}-M_H=\frac{\Lambda_l^2}{m_Q}+\mathcal O\!\Big(\frac{1}{m_Q^2}\Big)\ }.
+\]
+Heavy quarkonium $H=(Q\bar Q)$: non-relativistic potential picture; decays to light hadrons via gluons. Slides state:
+\[
+J^{P+}\to gg,\qquad J^{P-}\to ggg,\qquad
+\frac{\Gamma(J^{P-}\to ggg)}{\Gamma(J^{P+}\to gg)}\sim \as(m_Q)\ll 1,
+\]
+and quote that experimentally the corresponding ratios for $J/\psi,\Upsilon$ vs $\eta_c,\eta_b$ are very small (numerical accident mentioned in slides).
+
+\HR
+%==========================================================
+\MyBox{
+\textbf{Ultra-compact checklist (Topic 6)}\\
+\begin{itemize}
+\item Composite hadrons $\Rightarrow$ use QCD current \(j^\mu_{\rm QCD}=\sum q_j\bar\psi_j\gamma^\mu\psi_j\) and symmetries to parameterize matrix elements.
+\item Pion: \(\langle \pi\pi|j^\mu|0\rangle=e(p_2-p_1)^\mu F_\pi(s)\); low-$s$: \(F_\pi\simeq 1\).
+\item Proton: \(\langle p|j^\mu|p\rangle=\bar u\big(eF_1\gamma^\mu+\frac{e}{2m_p}F_2 i\sigma^{\mu\nu}q_\nu\big)u\); \(F_2(0)=\kappa_p\).
+\item Unpolarized $ep$: hadronic tensor depends on two functions \(G_1,G_2\); often rewrite via Sachs \(G_E,G_M\).
+\item DIS: inclusive tensor \(W^{\mu\nu}\) with \(W_1,W_2\); scaling at large \(\Qtwo\).
+\item Partons: PDFs \(f_i(x)\); \(F_2(x)=\sum f_i Q_i^2 x\); \(\boxed{2xF_1=F_2}\) for spin-$1/2$ partons.
+\item Momentum sum rule forces neutral partons $\Rightarrow$ gluons.
+\item QCD: local \(SU(3)\) with gluons; asymptotic freedom explains scaling; non-perturbative for chiral breaking.
+\item \(R(e^+e^-\to{\rm hadrons})\simeq \sum Q_j^2 \Nc\) at high energy (duality).
+\item Heavy quarks: NRQCD/HQET mass and spin-splitting scaling with \(1/m_Q\).
+\end{itemize}
+}
+\end{multicols}
+\end{document}
