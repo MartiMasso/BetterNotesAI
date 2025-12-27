@@ -100,12 +100,14 @@ export default function Workspace() {
 
   async function generateLatexFromPrompt(
     prompt: string,
-    templateId?: string | null
+    templateId?: string | null,
+    baseLatex?: string
   ): Promise<{ ok: true; latex: string } | { ok: false; error: string }> {
     try {
       setIsGenerating(true);
-      const payload: { prompt: string; templateId?: string } = { prompt };
+      const payload: { prompt: string; templateId?: string; baseLatex?: string } = { prompt };
       if (templateId) payload.templateId = templateId;
+      if (baseLatex?.trim()) payload.baseLatex = baseLatex;
       const r = await fetch("/api/generate-latex", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -273,7 +275,7 @@ export default function Workspace() {
       { role: "assistant", content: "Working… generating LaTeX and compiling PDF." },
     ]);
 
-    const gen = await generateLatexFromPrompt(text, selectedTemplate?.id);
+    const gen = await generateLatexFromPrompt(text, selectedTemplate?.id, draftLatex || savedLatex);
     if (!gen.ok) {
       setMessages((m) => replaceLastWorking(m, `Error: ${gen.error}`));
       return;

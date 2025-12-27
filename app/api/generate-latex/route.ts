@@ -32,7 +32,7 @@ function extractLatex(raw: string) {
 
 export async function POST(req: Request) {
   try {
-    const { prompt, templateId } = await req.json();
+    const { prompt, templateId, baseLatex } = await req.json();
 
     if (!prompt || typeof prompt !== "string") {
       return NextResponse.json({ error: "Missing 'prompt' string." }, { status: 400 });
@@ -60,12 +60,23 @@ Return ONLY LaTeX (no explanations).
         ].join("\n");
 
     // Responses API is the recommended primitive in openai-node.  [oai_citation:1‡GitHub](https://github.com/openai/openai-node?utm_source=chatgpt.com)
+    const messages: { role: "system" | "assistant" | "user"; content: string }[] = [
+      { role: "system", content: system },
+    ];
+
+    if (typeof baseLatex === "string" && baseLatex.trim()) {
+      messages.push({ role: "assistant", content: baseLatex });
+      messages.push({
+        role: "user",
+        content: `Revise the previous LaTeX above according to: ${prompt}. Return the full updated document.`,
+      });
+    } else {
+      messages.push({ role: "user", content: prompt });
+    }
+
     const resp = await client.responses.create({
       model: "gpt-4.1-mini",
-      input: [
-        { role: "system", content: system },
-        { role: "user", content: prompt },
-      ],
+      input: messages,
     });
 
     // openai-node returns output_text helper on response objects in many examples/docs.  [oai_citation:2‡GitHub](https://github.com/openai/openai-node?utm_source=chatgpt.com)
