@@ -1,3 +1,4 @@
+// app-api/src/server.ts
 import "dotenv/config";
 import express from "express";
 import type { Response } from "express";
@@ -14,7 +15,8 @@ const PORT = Number(process.env.PORT || 4000);
 
 // En dev: http://localhost:3000 (Next)
 // En prod: tu dominio de web (Vercel / GitHub Pages)
-const rawAllowedOrigins = process.env.CORS_ORIGIN || process.env.ALLOWED_ORIGIN || "http://localhost:3000";
+const rawAllowedOrigins =
+  process.env.CORS_ORIGIN || process.env.ALLOWED_ORIGIN || "http://localhost:3000";
 const allowedOrigins = rawAllowedOrigins
   .split(",")
   .map((origin) => origin.trim())
@@ -77,6 +79,66 @@ function run(cmd: string, args: string[], cwd?: string) {
   });
 }
 
+/**
+ * Minimal "unicode sanitization" to reduce pdfLaTeX/LuaLaTeX surprises.
+ * Still, we compile with LuaLaTeX, so this is belt-and-suspenders.
+ */
+function sanitizeLatexUnicode(input: string): string {
+  let s = input;
+
+  // Normalize common math unicode into LaTeX macros
+  const replacements: Array<[RegExp, string]> = [
+    [/β/g, "\\beta "],
+    [/α/g, "\\alpha "],
+    [/γ/g, "\\gamma "],
+    [/δ/g, "\\delta "],
+    [/ε/g, "\\epsilon "],
+    [/θ/g, "\\theta "],
+    [/λ/g, "\\lambda "],
+    [/μ/g, "\\mu "],
+    [/ν/g, "\\nu "],
+    [/π/g, "\\pi "],
+    [/ρ/g, "\\rho "],
+    [/σ/g, "\\sigma "],
+    [/τ/g, "\\tau "],
+    [/φ/g, "\\phi "],
+    [/ω/g, "\\omega "],
+    [/Γ/g, "\\Gamma "],
+    [/Δ/g, "\\Delta "],
+    [/Θ/g, "\\Theta "],
+    [/Λ/g, "\\Lambda "],
+    [/Π/g, "\\Pi "],
+    [/Σ/g, "\\Sigma "],
+    [/Φ/g, "\\Phi "],
+    [/Ω/g, "\\Omega "],
+    [/∞/g, "\\infty "],
+    [/∂/g, "\\partial "],
+    [/∇/g, "\\nabla "],
+    [/→/g, "\\to "],
+    [/⇒/g, "\\Rightarrow "],
+    [/⇔/g, "\\Leftrightarrow "],
+    [/≤/g, "\\le "],
+    [/≥/g, "\\ge "],
+    [/≠/g, "\\neq "],
+    [/±/g, "\\pm "],
+    [/×/g, "\\times "],
+    [/⋅/g, "\\cdot "],
+    [/−/g, "-"], // U+2212 minus
+    [/–/g, "-"], // en-dash
+    [/“/g, "``"],
+    [/”/g, "''"],
+    [/’/g, "'"],
+    [/…/g, "\\ldots "],
+  ];
+
+  for (const [re, rep] of replacements) s = s.replace(re, rep);
+
+  // Remove stray zero-width chars that sometimes appear
+  s = s.replace(/[\u200B-\u200D\uFEFF]/g, "");
+
+  return s;
+}
+
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
@@ -93,10 +155,13 @@ app.post("/generate-latex", async (req, res) => {
 
     const templateSource =
       typeof templateId === "string" ? loadTemplateSource(templateId) : null;
+
     const systemBase = `
 You generate ONLY a complete LaTeX document that compiles.
 Return ONLY LaTeX (no explanations, no Markdown fences).
+Avoid raw Unicode math symbols (e.g., β, α, ∂, ≤, ≥). Use LaTeX macros instead (\\beta, \\alpha, \\partial, \\le, \\ge).
 `.trim();
+
     const system = templateSource
       ? [
           systemBase,
@@ -136,7 +201,10 @@ Return ONLY LaTeX (no explanations, no Markdown fences).
     const latex = extractLatex(raw);
     if (!latex) return res.status(500).json({ error: "Empty LaTeX output." });
 
-    return res.json({ latex });
+    // Extra safety: sanitize before returning
+    const sanitized = sanitizeLatexUnicode(latex);
+
+    return res.json({ latex: sanitized });
   } catch (err: any) {
     return res.status(500).json({ error: err?.message ?? "Unknown error" });
   }
@@ -155,6 +223,7 @@ app.post("/fix-latex", async (req, res) => {
     const system = `
 You fix LaTeX compilation errors.
 Return ONLY the full corrected LaTeX document (no explanations, no Markdown fences).
+Avoid raw Unicode math symbols (e.g., β, α, ∂, ≤, ≥). Use LaTeX macros instead.
 `.trim();
 
     const userParts = [
@@ -179,7 +248,10 @@ Return ONLY the full corrected LaTeX document (no explanations, no Markdown fenc
     const fixedLatex = extractLatex(raw);
     if (!fixedLatex) return res.status(500).json({ error: "Empty LaTeX output." });
 
-    return res.json({ fixedLatex });
+    // Extra safety: sanitize before returning
+    const sanitized = sanitizeLatexUnicode(fixedLatex);
+
+    return res.json({ fixedLatex: sanitized });
   } catch (err: any) {
     return res.status(500).json({ error: err?.message ?? "Unknown error" });
   }
@@ -188,23 +260,32 @@ Return ONLY the full corrected LaTeX document (no explanations, no Markdown fenc
 // POST /compile  { latex: "..." }  -> application/pdf
 app.post("/compile", async (req, res) => {
   try {
-    const latex = req.body?.latex;
+    const latexRaw = req.body?.latex;
 
-    if (typeof latex !== "string" || latex.trim().length === 0) {
+    if (typeof latexRaw !== "string" || latexRaw.trim().length === 0) {
       return res.status(400).json({ error: "The 'latex' field is empty." });
     }
+
+    // Always sanitize before compile (prevents Unicode crashes)
+    const latex = sanitizeLatexUnicode(latexRaw);
 
     const jobDir = fs.mkdtempSync(path.join(os.tmpdir(), "betternotes-compile-"));
     fs.writeFileSync(path.join(jobDir, "main.tex"), latex, "utf8");
 
     try {
-      await run("latexmk", [
-        "-pdf",
-        "-interaction=nonstopmode",
-        "-halt-on-error",
-        "-no-shell-escape",
-        "main.tex"
-      ], jobDir);
+      // Use LuaLaTeX (handles Unicode better than pdfLaTeX)
+      await run(
+        "latexmk",
+        [
+          "-lualatex",
+          "-interaction=nonstopmode",
+          "-halt-on-error",
+          "-file-line-error",
+          "-no-shell-escape",
+          "main.tex",
+        ],
+        jobDir
+      );
     } catch (e: any) {
       const log = (e?.stderr || e?.stdout || "").toString();
       return res.status(400).json({ error: "LaTeX compilation failed.", log });

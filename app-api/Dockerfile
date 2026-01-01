@@ -1,11 +1,14 @@
 FROM node:20-bookworm
 
-# TeXLive mínimo razonable + latexmk (+ lmodern)
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     texlive-latex-base \
     texlive-latex-recommended \
     texlive-latex-extra \
     texlive-fonts-recommended \
+    texlive-science \
+    texlive-pictures \
+    texlive-luatex \
     lmodern \
     latexmk \
   && rm -rf /var/lib/apt/lists/*
@@ -21,6 +24,7 @@ RUN npm run build
 COPY templates ./templates
 
 ENV PORT=4000
+
 EXPOSE 4000
 
 CMD ["npm", "start"]
