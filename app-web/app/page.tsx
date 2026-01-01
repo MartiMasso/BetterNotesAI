@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Background from "./components/Background";
 
 export default function Home() {
+  const router = useRouter();
   const [prompt, setPrompt] = useState("");
 
   function onSend() {
     if (!prompt.trim()) return;
-    window.location.href = "/workspace";
+    router.push("/workspace");
   }
 
   return (
