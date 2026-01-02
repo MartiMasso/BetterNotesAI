@@ -9,6 +9,37 @@ type Mode = "start" | "project";
 type StartTab = "my" | "shared" | "templates";
 type Msg = { role: "user" | "assistant"; content: string };
 
+const API_BASE_URL =
+  (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000").replace(/\/$/, "");
+
+function base64ToUint8Array(base64: string) {
+  const bin = atob(base64);
+  const len = bin.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+function extractDocumentBody(latex: string) {
+  const s = latex || "";
+  const a = s.indexOf("\\begin{document}");
+  const b = s.lastIndexOf("\\end{document}");
+  if (a !== -1 && b !== -1 && b > a) {
+    return s.slice(a + "\\begin{document}".length, b).trim();
+  }
+  return s.trim();
+}
+
+function splitCompilerOutput(err: string): { message: string; log: string } {
+  const raw = (err || "").toString();
+  const marker = "----- compiler output -----";
+  const idx = raw.indexOf(marker);
+  if (idx === -1) return { message: raw.trim() || "Compilation failed.", log: "" };
+  const message = raw.slice(0, idx).trim() || "Compilation failed.";
+  const log = raw.slice(idx + marker.length).trim();
+  return { message, log };
+}
+
 export default function Workspace() {
   const [mode, setMode] = useState<Mode>("start");
 
@@ -44,9 +75,9 @@ export default function Workspace() {
   const [compileError, setCompileError] = useState<string>("");
   const [compileLog, setCompileLog] = useState<string>("");
 
-  // AI fix
+  // AI fix (client-driven via /generate-latex)
   const [isFixing, setIsFixing] = useState(false);
-  const [fixCandidate, setFixCandidate] = useState<string>(""); // suggested fixed latex
+  const [fixCandidate, setFixCandidate] = useState<string>(""); // suggested fixed latex (full document)
   const [showFixModal, setShowFixModal] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -100,23 +131,26 @@ export default function Workspace() {
 
   async function generateLatexFromPrompt(
     prompt: string,
-    templateId?: string | null,
-    baseLatex?: string
+    templateId?: string | null
   ): Promise<{ ok: true; latex: string } | { ok: false; error: string }> {
     try {
       setIsGenerating(true);
-      const payload: { prompt: string; templateId?: string; baseLatex?: string } = { prompt };
+
+      const payload: { prompt: string; templateId?: string } = { prompt };
       if (templateId) payload.templateId = templateId;
-      if (baseLatex?.trim()) payload.baseLatex = baseLatex;
-      const r = await fetch("/api/generate-latex", {
+
+      const r = await fetch(`${API_BASE_URL}/generate-latex`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+
       const data = await r.json().catch(() => null);
       if (!r.ok) return { ok: false, error: data?.error ?? "Failed to generate LaTeX." };
+
       const latex = (data?.latex ?? "").toString();
       if (!latex.trim()) return { ok: false, error: "Model returned empty LaTeX." };
+
       return { ok: true, latex };
     } catch (e: any) {
       return { ok: false, error: e?.message ?? "Generate error" };
@@ -125,7 +159,9 @@ export default function Workspace() {
     }
   }
 
-  async function compileSavedLatex(): Promise<{ ok: true } | { ok: false; error: string; log?: string }> {
+  async function compileSavedLatex(): Promise<
+    { ok: true } | { ok: false; error: string; log?: string }
+  > {
     if (!savedLatex.trim()) return { ok: false, error: "Nothing to compile." };
 
     const res = await compileDirect(savedLatex);
@@ -157,19 +193,36 @@ export default function Workspace() {
 
     setIsFixing(true);
     try {
-      const r = await fetch("/api/fix-latex", {
+      const currentDoc = savedLatex;
+      const currentBody = extractDocumentBody(currentDoc);
+
+      const fixPrompt = [
+        "Fix the LaTeX so it compiles with pdflatex.",
+        "Keep the same style and structure as much as possible; only change what is needed.",
+        "Do NOT add markdown fences. Output only LaTeX.",
+        "",
+        "=== COMPILER LOG ===",
+        compileLog,
+        "",
+        "=== CURRENT CONTENT (between \\begin{document} and \\end{document}) ===",
+        currentBody,
+        "",
+        "Return the corrected content.",
+      ].join("\n");
+
+      const r = await fetch(`${API_BASE_URL}/generate-latex`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          latex: savedLatex,
-          log: compileLog,
+          prompt: fixPrompt,
+          templateId: selectedTemplate?.id ?? undefined,
         }),
       });
 
       const data = await r.json().catch(() => null);
       if (!r.ok) throw new Error(data?.error ?? "Fix failed.");
 
-      const fixed = (data?.fixedLatex ?? data?.latex ?? "").toString();
+      const fixed = (data?.latex ?? "").toString();
       if (!fixed.trim()) throw new Error("Fix endpoint returned empty LaTeX.");
 
       setFixCandidate(fixed);
@@ -184,13 +237,11 @@ export default function Workspace() {
   async function applyFixAndCompile() {
     if (!fixCandidate.trim()) return;
 
-    // Apply fix as new draft + saved
     setDraftLatex(fixCandidate);
     setSavedLatex(fixCandidate);
     setDirty(false);
     setShowFixModal(false);
 
-    // Clear previous compile error/log before recompiling
     setCompileError("");
     setCompileLog("");
 
@@ -226,37 +277,29 @@ export default function Workspace() {
     setStartInput("");
     setProjectInput("");
 
-    // seed chat
     setMessages((m) => [
       ...m,
       { role: "user", content: text },
       { role: "assistant", content: "Working… generating LaTeX and compiling PDF." },
     ]);
 
-    // generate
     const gen = await generateLatexFromPrompt(text, selectedTemplate?.id);
     if (!gen.ok) {
       setMessages((m) => replaceLastWorking(m, `Error: ${gen.error}`));
       return;
     }
 
-    // set latex states
     setDraftLatex(gen.latex);
     setSavedLatex(gen.latex);
-    setCompiledLatex(""); // unknown until compile success
+    setCompiledLatex("");
     setDirty(false);
     setActiveRightTab("preview");
 
-    // compile
-    const comp = await (async () => {
-      // compile expects savedLatex; ensure it’s set
-      // (state update is async, so compile using direct value too)
-      setSavedLatex(gen.latex);
-      return await compileDirect(gen.latex);
-    })();
-
+    const comp = await compileDirect(gen.latex);
     if (!comp.ok) {
-      setMessages((m) => replaceLastWorking(m, `Generated LaTeX, but compilation failed. Use “Fix with AI”.`));
+      setMessages((m) =>
+        replaceLastWorking(m, `Generated LaTeX, but compilation failed. Use “Fix with AI”.`)
+      );
     } else {
       setCompiledLatex(gen.latex);
       setMessages((m) => replaceLastWorking(m, `Done. Preview updated on the right.`));
@@ -275,7 +318,22 @@ export default function Workspace() {
       { role: "assistant", content: "Working… generating LaTeX and compiling PDF." },
     ]);
 
-    const gen = await generateLatexFromPrompt(text, selectedTemplate?.id, draftLatex || savedLatex);
+    // Provide context for “iterative edits” (since backend no longer accepts baseLatex)
+    const contextDoc = (draftLatex || savedLatex || "").trim();
+    const contextBody = contextDoc ? extractDocumentBody(contextDoc) : "";
+
+    const augmentedPrompt = contextBody
+      ? [
+          text,
+          "",
+          "=== CURRENT CONTENT (between \\begin{document} and \\end{document}) ===",
+          contextBody,
+          "",
+          "Update the current content according to my request and return the updated LaTeX.",
+        ].join("\n")
+      : text;
+
+    const gen = await generateLatexFromPrompt(augmentedPrompt, selectedTemplate?.id);
     if (!gen.ok) {
       setMessages((m) => replaceLastWorking(m, `Error: ${gen.error}`));
       return;
@@ -288,47 +346,93 @@ export default function Workspace() {
 
     const comp = await compileDirect(gen.latex);
     if (!comp.ok) {
-      setMessages((m) => replaceLastWorking(m, `Generated LaTeX, but compilation failed. Use “Fix with AI”.`));
+      setMessages((m) =>
+        replaceLastWorking(m, `Generated LaTeX, but compilation failed. Use “Fix with AI”.`)
+      );
     } else {
       setCompiledLatex(gen.latex);
       setMessages((m) => replaceLastWorking(m, `Done. Preview updated on the right.`));
     }
   }
 
-  // helper: compile a direct latex string (avoids relying on async state)
-  async function compileDirect(latex: string): Promise<{ ok: true } | { ok: false; error: string; log?: string }> {
+  // helper: compile a direct latex string
+  async function compileDirect(
+    latex: string
+  ): Promise<{ ok: true } | { ok: false; error: string; log?: string }> {
     setCompileError("");
     setCompileLog("");
 
     try {
       setIsCompiling(true);
 
-      const r = await fetch("/api/compile", {
+      const r = await fetch(`${API_BASE_URL}/compile`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ latex }),
       });
 
-      if (!r.ok) {
+      const ct = (r.headers.get("content-type") || "").toLowerCase();
+
+      // ---------- SUCCESS ----------
+      if (r.ok) {
+        // Case A: backend returns raw PDF bytes
+        if (ct.includes("application/pdf")) {
+          const buf = await r.arrayBuffer();
+          if (!buf || buf.byteLength === 0) {
+            const msg = "Compile succeeded but PDF response was empty.";
+            setCompileError(msg);
+            return { ok: false, error: msg };
+          }
+
+          const blob = new Blob([buf], { type: "application/pdf" });
+          setPdfUrl((prev) => {
+            if (prev) URL.revokeObjectURL(prev);
+            return URL.createObjectURL(blob);
+          });
+
+          setCompileError("");
+          setCompileLog("");
+          return { ok: true };
+        }
+
+        // Case B: backend returns JSON with pdfBase64
         const data = await r.json().catch(() => null);
-        const errMsg = data?.error ?? "Compilation failed.";
-        const log = data?.log ?? "";
-        setCompileError(errMsg);
-        setCompileLog(log);
-        return { ok: false, error: errMsg, log };
+
+        const pdfBase64 =
+          (data?.pdfBase64 ?? data?.pdf_base64 ?? data?.pdf ?? "").toString();
+
+        if (!pdfBase64.trim()) {
+          const msg =
+            "Compile succeeded but PDF payload was empty (missing pdfBase64). " +
+            "Fix backend to return { pdfBase64 } OR return application/pdf.";
+          setCompileError(msg);
+          // if backend sends log even on success, keep it
+          if (data?.log) setCompileLog(String(data.log));
+          return { ok: false, error: msg, log: data?.log ? String(data.log) : "" };
+        }
+
+        const bytes = base64ToUint8Array(pdfBase64);
+        const blob = new Blob([bytes], { type: "application/pdf" });
+
+        setPdfUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return URL.createObjectURL(blob);
+        });
+
+        setCompileError("");
+        setCompileLog("");
+        return { ok: true };
       }
 
-      const buf = await r.arrayBuffer();
-      const blob = new Blob([buf], { type: "application/pdf" });
+      // ---------- ERROR ----------
+      // Try JSON error first
+      const data = await r.json().catch(() => null);
+      const rawErr = (data?.error ?? "Compilation failed.").toString();
 
-      setPdfUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return URL.createObjectURL(blob);
-      });
-
-      setCompileError("");
-      setCompileLog("");
-      return { ok: true };
+      const { message, log } = splitCompilerOutput(rawErr);
+      setCompileError(message);
+      setCompileLog(log || (data?.log ? String(data.log) : ""));
+      return { ok: false, error: message, log: log || (data?.log ? String(data.log) : "") };
     } catch (e: any) {
       const msg = e?.message ?? "Compile error";
       setCompileError(msg);
@@ -337,6 +441,7 @@ export default function Workspace() {
       setIsCompiling(false);
     }
   }
+
 
   function replaceLastWorking(m: Msg[], newText: string) {
     const copy = [...m];
@@ -430,11 +535,13 @@ export default function Workspace() {
               <div>
                 <div className="text-sm font-semibold">Result</div>
                 <div className="text-xs text-white/60">
-                  {draftLatex
-                    ? previewOutdated
-                      ? "Preview is outdated — run Save & Compile to update."
-                      : "PDF preview is up to date."
-                    : "Send a prompt to generate LaTeX + PDF."}
+                  {!draftLatex
+                    ? "Send a prompt to generate LaTeX + PDF."
+                    : !pdfUrl
+                      ? "No PDF yet — compile to generate the preview."
+                      : previewOutdated
+                        ? "Preview is outdated — run Save & Compile to update."
+                        : "PDF preview is up to date."}
                 </div>
               </div>
 
@@ -522,7 +629,6 @@ export default function Workspace() {
                 )}
               </div>
 
-
               {/* compile error panel */}
               {compileError ? (
                 <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-4">
@@ -567,11 +673,7 @@ export default function Workspace() {
                     <pre className="mt-3 max-h-44 overflow-auto rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-white/75">
                       {compileLog}
                     </pre>
-                  ) : (
-                    <div className="mt-3 text-xs text-white/60">
-                      (No compiler log available. Make sure your /api/compile returns JSON with a “log” field on error.)
-                    </div>
-                  )}
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -630,9 +732,7 @@ export default function Workspace() {
     <main className="relative min-h-screen text-white">
       <div className="mx-auto max-w-5xl px-4 pt-16 pb-44">
         <div className="text-center">
-          <h1 className="mt-6 text-3xl sm:text-5xl font-semibold tracking-tight">
-            What should we build?
-          </h1>
+          <h1 className="mt-6 text-3xl sm:text-5xl font-semibold tracking-tight">What should we build?</h1>
           <p className="mt-3 text-white/70">
             Example: “Generate a formula sheet from my lecture notes (LaTeX + PDF)”.
           </p>
@@ -702,9 +802,7 @@ export default function Workspace() {
                 key={t.id}
                 t={t as any}
                 selected={selectedTemplateId === t.id}
-                onSelect={() =>
-                  setSelectedTemplateId((current) => (current === t.id ? null : t.id))
-                }
+                onSelect={() => setSelectedTemplateId((current) => (current === t.id ? null : t.id))}
               />
             ))}
           </div>
