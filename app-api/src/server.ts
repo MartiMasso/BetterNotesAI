@@ -10,39 +10,51 @@ import { execFile } from "child_process";
 import OpenAI from "openai";
 
 const app = express();
+app.set("trust proxy", 1);
 
-// --- Config ---
 const PORT = Number(process.env.PORT || 4000);
 
-// En dev: http://localhost:3000 (Next)
-// En prod: tu dominio Vercel
+// CORS
 const rawAllowedOrigins =
-  process.env.CORS_ORIGIN ||
-  process.env.ALLOWED_ORIGIN ||
-  "http://localhost:3000";
+  process.env.CORS_ORIGIN || process.env.ALLOWED_ORIGIN || "http://localhost:3000";
 
 const allowedOrigins = rawAllowedOrigins
   .split(",")
   .map((o) => o.trim())
   .filter(Boolean);
 
-// Importante detrás de proxy (Railway)
-app.set("trust proxy", 1);
-
-// --- Middleware ---
 app.use(
   cors({
     origin(origin, callback) {
-      // Postman/curl sin origin
+      // requests without Origin (curl/healthchecks) should pass
       if (!origin) return callback(null, true);
+
+      // allow all
       if (allowedOrigins.includes("*")) return callback(null, true);
-      return callback(null, allowedOrigins.includes(origin));
+
+      // exact match
+      const ok = allowedOrigins.includes(origin);
+      return callback(null, ok);
     },
   })
 );
+
 app.use(express.json({ limit: "2mb" }));
 
-// --- OpenAI ---
+process.on("unhandledRejection", (err) => {
+  console.error("unhandledRejection:", err);
+});
+process.on("uncaughtException", (err) => {
+  console.error("uncaughtException:", err);
+});
+
+// OpenAI
+function getOpenAIClient() {
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+}
+function getModel() {
+  return process.env.OPENAI_MODEL || "gpt-4o-mini";
+}
 function ensureOpenAIKey(res: Response) {
   if (!process.env.OPENAI_API_KEY) {
     res.status(500).json({ error: "OPENAI_API_KEY is not set." });
@@ -51,14 +63,7 @@ function ensureOpenAIKey(res: Response) {
   return true;
 }
 
-function getModel() {
-  // gpt-4o-mini está soportado (chat + responses).  [oai_citation:0‡OpenAI Platform](https://platform.openai.com/docs/models/compare?model=gpt-4o-mini)
-  return process.env.OPENAI_MODEL || "gpt-4o-mini";
-}
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-// --- Templates ---
+// Templates
 const TEMPLATE_FILES: Record<string, string> = {
   landscape_3col_maths: "templates/landscape_3col_maths.tex",
   "2cols_portrait": "templates/2cols_portrait.tex",
@@ -83,22 +88,13 @@ function extractLatex(raw: string) {
 
 function run(cmd: string, args: string[], cwd?: string) {
   return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
-    execFile(
-      cmd,
-      args,
-      { cwd, maxBuffer: 20 * 1024 * 1024 },
-      (error, stdout, stderr) => {
-        if (error) reject({ error, stdout, stderr });
-        else resolve({ stdout, stderr });
-      }
-    );
+    execFile(cmd, args, { cwd, maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) reject({ error, stdout, stderr });
+      else resolve({ stdout, stderr });
+    });
   });
 }
 
-/**
- * Minimal unicode sanitization (belt-and-suspenders).
- * Compilamos con LuaLaTeX igualmente.
- */
 function sanitizeLatexUnicode(input: string): string {
   let s = input;
 
@@ -138,8 +134,8 @@ function sanitizeLatexUnicode(input: string): string {
     [/±/g, "\\pm "],
     [/×/g, "\\times "],
     [/⋅/g, "\\cdot "],
-    [/−/g, "-"], // U+2212 minus
-    [/–/g, "-"], // en-dash
+    [/−/g, "-"],
+    [/–/g, "-"],
     [/“/g, "``"],
     [/”/g, "''"],
     [/’/g, "'"],
@@ -147,39 +143,16 @@ function sanitizeLatexUnicode(input: string): string {
   ];
 
   for (const [re, rep] of replacements) s = s.replace(re, rep);
-  s = s.replace(/[\u200B-\u200D\uFEFF]/g, ""); // zero-width
+  s = s.replace(/[\u200B-\u200D\uFEFF]/g, "");
   return s;
 }
 
-// --- OpenAI call wrapper (Responses API si existe; fallback a Chat Completions) ---
-async function generateText(messages: Array<{ role: "system" | "user" | "assistant"; content: string }>) {
-  const model = getModel();
-
-  // 1) Prefer: Responses API (OpenAI recomienda Responses como primitive)  [oai_citation:1‡OpenAI Platform](https://platform.openai.com/docs/quickstart)
-  const anyOpenAI = openai as any;
-  if (anyOpenAI?.responses?.create) {
-    const resp = await anyOpenAI.responses.create({
-      model,
-      input: messages,
-    });
-    // En ejemplos, output_text aparece como helper  [oai_citation:2‡OpenAI Platform](https://platform.openai.com/docs/quickstart)
-    return (resp as any).output_text ?? "";
-  }
-
-  // 2) Fallback: Chat Completions (si tu versión del SDK es distinta)
-  const resp = await (openai as any).chat.completions.create({
-    model,
-    messages,
-  });
-  return resp?.choices?.[0]?.message?.content ?? "";
-}
-
-// --- Routes ---
+// Health
 app.get("/health", (_req, res) => {
   res.json({ ok: true, port: PORT });
 });
 
-// POST /generate-latex  { prompt, templateId?, baseLatex? } -> { latex }
+// Generate LaTeX
 app.post("/generate-latex", async (req, res) => {
   if (!ensureOpenAIKey(res)) return;
 
@@ -195,7 +168,7 @@ app.post("/generate-latex", async (req, res) => {
     const systemBase = `
 You generate ONLY a complete LaTeX document that compiles.
 Return ONLY LaTeX (no explanations, no Markdown fences).
-Avoid raw Unicode math symbols (e.g., β, α, ∂, ≤, ≥). Use LaTeX macros instead (\\beta, \\alpha, \\partial, \\le, \\ge).
+Avoid raw Unicode math symbols (e.g., β, α, ∂, ≤, ≥). Use LaTeX macros instead.
 `.trim();
 
     const system = templateSource
@@ -214,7 +187,7 @@ Avoid raw Unicode math symbols (e.g., β, α, ∂, ≤, ≥). Use LaTeX macros i
           "If unsure, keep it minimal and compilable.",
         ].join("\n");
 
-    const messages: Array<{ role: "system" | "assistant" | "user"; content: string }> = [
+    const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
       { role: "system", content: system },
     ];
 
@@ -228,57 +201,24 @@ Avoid raw Unicode math symbols (e.g., β, α, ∂, ≤, ≥). Use LaTeX macros i
       messages.push({ role: "user", content: prompt });
     }
 
-    const raw = await generateText(messages);
+    const openai = getOpenAIClient();
+    const resp = await openai.chat.completions.create({
+      model: getModel(),
+      messages,
+    });
+
+    const raw = resp.choices[0]?.message?.content ?? "";
     const latex = extractLatex(raw);
     if (!latex) return res.status(500).json({ error: "Empty LaTeX output." });
 
     return res.json({ latex: sanitizeLatexUnicode(latex) });
   } catch (err: any) {
+    console.error("generate-latex error:", err);
     return res.status(500).json({ error: err?.message ?? "Unknown error" });
   }
 });
 
-// POST /fix-latex  { latex, log } -> { fixedLatex }
-app.post("/fix-latex", async (req, res) => {
-  if (!ensureOpenAIKey(res)) return;
-
-  try {
-    const { latex, log } = req.body ?? {};
-    if (!latex || typeof latex !== "string") {
-      return res.status(400).json({ error: "Missing 'latex' string." });
-    }
-
-    const system = `
-You fix LaTeX compilation errors.
-Return ONLY the full corrected LaTeX document (no explanations, no Markdown fences).
-Avoid raw Unicode math symbols (e.g., β, α, ∂, ≤, ≥). Use LaTeX macros instead.
-`.trim();
-
-    const userParts = [
-      "LaTeX input:",
-      latex,
-      "",
-      "Compiler log:",
-      typeof log === "string" && log.trim() ? log : "(no log provided)",
-      "",
-      "Fix the errors and return the full LaTeX document.",
-    ].join("\n");
-
-    const raw = await generateText([
-      { role: "system", content: system },
-      { role: "user", content: userParts },
-    ]);
-
-    const fixedLatex = extractLatex(raw);
-    if (!fixedLatex) return res.status(500).json({ error: "Empty LaTeX output." });
-
-    return res.json({ fixedLatex: sanitizeLatexUnicode(fixedLatex) });
-  } catch (err: any) {
-    return res.status(500).json({ error: err?.message ?? "Unknown error" });
-  }
-});
-
-// POST /compile  { latex: "..." } -> application/pdf
+// Compile PDF
 app.post("/compile", async (req, res) => {
   try {
     const latexRaw = req.body?.latex;
@@ -306,8 +246,8 @@ app.post("/compile", async (req, res) => {
         jobDir
       );
     } catch (e: any) {
-      const logText = (e?.stderr || e?.stdout || "").toString();
-      return res.status(400).json({ error: "LaTeX compilation failed.", log: logText });
+      const log = (e?.stderr || e?.stdout || "").toString();
+      return res.status(400).json({ error: "LaTeX compilation failed.", log });
     }
 
     const pdfPath = path.join(jobDir, "main.pdf");
@@ -320,11 +260,11 @@ app.post("/compile", async (req, res) => {
     res.setHeader("Content-Disposition", 'inline; filename="notes.pdf"');
     return res.status(200).send(pdf);
   } catch (err: any) {
+    console.error("compile error:", err);
     return res.status(500).json({ error: err?.message ?? "Unknown error" });
   }
 });
 
-// IMPORTANT: Railway necesita 0.0.0.0
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`API listening on port ${PORT}`);
   console.log(`CORS allowed origins: ${allowedOrigins.join(", ")}`);
