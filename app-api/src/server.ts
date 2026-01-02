@@ -11,30 +11,59 @@ import OpenAI from "openai";
 
 const app = express();
 
+// --- Config ---
 const PORT = Number(process.env.PORT || 4000);
 
-// En dev: http://localhost:3000 (Next)
-// En prod: tu dominio de web (Vercel / GitHub Pages)
+// Comma-separated allowed origins.
+// Examples:
+//   CORS_ORIGIN="http://localhost:3000,https://better-notes-ai.vercel.app"
+//   CORS_ORIGIN="*"
 const rawAllowedOrigins =
-  process.env.CORS_ORIGIN || process.env.ALLOWED_ORIGIN || "http://localhost:3000";
+  process.env.CORS_ORIGIN ||
+  process.env.ALLOWED_ORIGIN ||
+  "http://localhost:3000";
+
 const allowedOrigins = rawAllowedOrigins
   .split(",")
-  .map((origin) => origin.trim())
+  .map((o) => o.trim())
   .filter(Boolean);
 
+app.set("trust proxy", 1);
+
+// --- Middleware ---
 app.use(
   cors({
     origin(origin, callback) {
+      // allow server-to-server / curl / health checks without Origin header
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes("*")) return callback(null, true);
       return callback(null, allowedOrigins.includes(origin));
     },
   })
 );
+
 app.use(express.json({ limit: "2mb" }));
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// --- OpenAI ---
+function ensureOpenAIKey(res: Response) {
+  if (!process.env.OPENAI_API_KEY) {
+    res.status(500).json({ error: "OPENAI_API_KEY is not set." });
+    return false;
+  }
+  return true;
+}
 
+function getOpenAIClient() {
+  // Create lazily so boot doesn't fail if key missing on health checks.
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+}
+
+function getModel() {
+  // Keep your default; override with OPENAI_MODEL in Railway if desired.
+  return process.env.OPENAI_MODEL || "gpt-4.1-mini";
+}
+
+// --- Templates ---
 const TEMPLATE_FILES: Record<string, string> = {
   landscape_3col_maths: "templates/landscape_3col_maths.tex",
   "2cols_portrait": "templates/2cols_portrait.tex",
@@ -57,20 +86,12 @@ function extractLatex(raw: string) {
   return (fenced?.[1] ?? raw).trim();
 }
 
-function ensureOpenAIKey(res: Response) {
-  if (!process.env.OPENAI_API_KEY) {
-    res.status(500).json({ error: "OPENAI_API_KEY is not set." });
-    return false;
-  }
-  return true;
-}
-
 function run(cmd: string, args: string[], cwd?: string) {
   return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
     execFile(
       cmd,
       args,
-      { cwd, maxBuffer: 10 * 1024 * 1024 },
+      { cwd, maxBuffer: 20 * 1024 * 1024 },
       (error, stdout, stderr) => {
         if (error) reject({ error, stdout, stderr });
         else resolve({ stdout, stderr });
@@ -80,13 +101,12 @@ function run(cmd: string, args: string[], cwd?: string) {
 }
 
 /**
- * Minimal "unicode sanitization" to reduce pdfLaTeX/LuaLaTeX surprises.
- * Still, we compile with LuaLaTeX, so this is belt-and-suspenders.
+ * Minimal unicode sanitization to reduce TeX engine surprises.
+ * We compile with LuaLaTeX, so this is belt-and-suspenders.
  */
 function sanitizeLatexUnicode(input: string): string {
   let s = input;
 
-  // Normalize common math unicode into LaTeX macros
   const replacements: Array<[RegExp, string]> = [
     [/β/g, "\\beta "],
     [/α/g, "\\alpha "],
@@ -133,14 +153,25 @@ function sanitizeLatexUnicode(input: string): string {
 
   for (const [re, rep] of replacements) s = s.replace(re, rep);
 
-  // Remove stray zero-width chars that sometimes appear
+  // remove zero-width chars
   s = s.replace(/[\u200B-\u200D\uFEFF]/g, "");
 
   return s;
 }
 
+// --- Routes ---
+app.get("/", (_req, res) => {
+  res.json({ ok: true, service: "betternotes-api" });
+});
+
 app.get("/health", (_req, res) => {
-  res.json({ ok: true });
+  res.json({
+    ok: true,
+    port: PORT,
+    model: getModel(),
+    allowedOrigins,
+    hasOpenAIKey: Boolean(process.env.OPENAI_API_KEY),
+  });
 });
 
 // POST /generate-latex  { prompt, templateId?, baseLatex? } -> { latex }
@@ -192,8 +223,10 @@ Avoid raw Unicode math symbols (e.g., β, α, ∂, ≤, ≥). Use LaTeX macros i
       messages.push({ role: "user", content: prompt });
     }
 
+    const openai = getOpenAIClient();
+
     const resp = await openai.responses.create({
-      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+      model: getModel(),
       input: messages,
     });
 
@@ -201,12 +234,11 @@ Avoid raw Unicode math symbols (e.g., β, α, ∂, ≤, ≥). Use LaTeX macros i
     const latex = extractLatex(raw);
     if (!latex) return res.status(500).json({ error: "Empty LaTeX output." });
 
-    // Extra safety: sanitize before returning
-    const sanitized = sanitizeLatexUnicode(latex);
-
-    return res.json({ latex: sanitized });
+    return res.json({ latex: sanitizeLatexUnicode(latex) });
   } catch (err: any) {
-    return res.status(500).json({ error: err?.message ?? "Unknown error" });
+    return res.status(500).json({
+      error: err?.message ?? "Unknown error",
+    });
   }
 });
 
@@ -236,8 +268,10 @@ Avoid raw Unicode math symbols (e.g., β, α, ∂, ≤, ≥). Use LaTeX macros i
       "Fix the errors and return the full LaTeX document.",
     ];
 
+    const openai = getOpenAIClient();
+
     const resp = await openai.responses.create({
-      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+      model: getModel(),
       input: [
         { role: "system", content: system },
         { role: "user", content: userParts.join("\n") },
@@ -248,12 +282,11 @@ Avoid raw Unicode math symbols (e.g., β, α, ∂, ≤, ≥). Use LaTeX macros i
     const fixedLatex = extractLatex(raw);
     if (!fixedLatex) return res.status(500).json({ error: "Empty LaTeX output." });
 
-    // Extra safety: sanitize before returning
-    const sanitized = sanitizeLatexUnicode(fixedLatex);
-
-    return res.json({ fixedLatex: sanitized });
+    return res.json({ fixedLatex: sanitizeLatexUnicode(fixedLatex) });
   } catch (err: any) {
-    return res.status(500).json({ error: err?.message ?? "Unknown error" });
+    return res.status(500).json({
+      error: err?.message ?? "Unknown error",
+    });
   }
 });
 
@@ -266,14 +299,12 @@ app.post("/compile", async (req, res) => {
       return res.status(400).json({ error: "The 'latex' field is empty." });
     }
 
-    // Always sanitize before compile (prevents Unicode crashes)
     const latex = sanitizeLatexUnicode(latexRaw);
 
     const jobDir = fs.mkdtempSync(path.join(os.tmpdir(), "betternotes-compile-"));
     fs.writeFileSync(path.join(jobDir, "main.tex"), latex, "utf8");
 
     try {
-      // Use LuaLaTeX (handles Unicode better than pdfLaTeX)
       await run(
         "latexmk",
         [
@@ -297,16 +328,19 @@ app.post("/compile", async (req, res) => {
     }
 
     const pdf = fs.readFileSync(pdfPath);
-
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", 'inline; filename="notes.pdf"');
     return res.status(200).send(pdf);
   } catch (err: any) {
-    return res.status(500).json({ error: err?.message ?? "Unknown error" });
+    return res.status(500).json({
+      error: err?.message ?? "Unknown error",
+    });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`API listening on http://localhost:${PORT}`);
+// --- Start ---
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`API listening on port ${PORT}`);
+  console.log(`OPENAI_MODEL: ${getModel()}`);
   console.log(`CORS allowed origins: ${allowedOrigins.join(", ")}`);
 });
