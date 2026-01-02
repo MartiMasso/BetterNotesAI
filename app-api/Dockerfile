@@ -1,5 +1,6 @@
 FROM node:20-bookworm
 
+# Instalar LaTeX y dependencias
 RUN apt-get update && apt-get install -y --no-install-recommends \
     texlive-latex-base \
     texlive-latex-recommended \
@@ -14,16 +15,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY package.json package-lock.json tsconfig.json ./
-RUN npm ci
+# Copiar archivos de dependencias
+# Nota: Si usas package-lock.json asegúrate de que esté en el repo
+COPY package*.json tsconfig.json ./
+RUN npm install
 
-COPY src ./src
+# Copiar el resto del código
+COPY . .
 
-COPY templates ./templates
-
+# Compilar TypeScript (esto genera la carpeta /dist)
 RUN npm run build
 
-ENV NODE_ENV=production
+ENV PORT=4000
 EXPOSE 4000
 
+# IMPORTANTE: Asegúrate de que en package.json "start" sea "node dist/server.js"
+# O usa directamente el comando aquí:
 CMD ["node", "dist/server.js"]
