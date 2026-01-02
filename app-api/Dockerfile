@@ -1,6 +1,5 @@
 FROM node:20-bookworm
 
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
     texlive-latex-base \
     texlive-latex-recommended \
@@ -19,12 +18,12 @@ COPY package.json package-lock.json tsconfig.json ./
 RUN npm ci
 
 COPY src ./src
-RUN npm run build
 
 COPY templates ./templates
 
-ENV PORT=4000
+RUN npm run build
 
+ENV NODE_ENV=production
 EXPOSE 4000
 
-CMD ["npm", "start"]
+CMD ["node", "dist/server.js"]
