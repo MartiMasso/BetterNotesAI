@@ -131,13 +131,15 @@ export default function Workspace() {
 
   async function generateLatexFromPrompt(
     prompt: string,
-    templateId?: string | null
+    templateId?: string | null,
+    baseLatex?: string
   ): Promise<{ ok: true; latex: string } | { ok: false; error: string }> {
     try {
       setIsGenerating(true);
 
-      const payload: { prompt: string; templateId?: string } = { prompt };
+      const payload: { prompt: string; templateId?: string; baseLatex?: string } = { prompt };
       if (templateId) payload.templateId = templateId;
+      if (baseLatex?.trim()) payload.baseLatex = baseLatex;
 
       const r = await fetch(`${API_BASE_URL}/generate-latex`, {
         method: "POST",
@@ -150,7 +152,6 @@ export default function Workspace() {
 
       const latex = (data?.latex ?? "").toString();
       if (!latex.trim()) return { ok: false, error: "Model returned empty LaTeX." };
-
       return { ok: true, latex };
     } catch (e: any) {
       return { ok: false, error: e?.message ?? "Generate error" };
@@ -193,36 +194,19 @@ export default function Workspace() {
 
     setIsFixing(true);
     try {
-      const currentDoc = savedLatex;
-      const currentBody = extractDocumentBody(currentDoc);
-
-      const fixPrompt = [
-        "Fix the LaTeX so it compiles with pdflatex.",
-        "Keep the same style and structure as much as possible; only change what is needed.",
-        "Do NOT add markdown fences. Output only LaTeX.",
-        "",
-        "=== COMPILER LOG ===",
-        compileLog,
-        "",
-        "=== CURRENT CONTENT (between \\begin{document} and \\end{document}) ===",
-        currentBody,
-        "",
-        "Return the corrected content.",
-      ].join("\n");
-
-      const r = await fetch(`${API_BASE_URL}/generate-latex`, {
+      const r = await fetch(`${API_BASE_URL}/fix-latex`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt: fixPrompt,
-          templateId: selectedTemplate?.id ?? undefined,
+          latex: savedLatex,
+          log: compileLog,
         }),
       });
 
       const data = await r.json().catch(() => null);
       if (!r.ok) throw new Error(data?.error ?? "Fix failed.");
 
-      const fixed = (data?.latex ?? "").toString();
+      const fixed = (data?.fixedLatex ?? "").toString();
       if (!fixed.trim()) throw new Error("Fix endpoint returned empty LaTeX.");
 
       setFixCandidate(fixed);
@@ -318,22 +302,10 @@ export default function Workspace() {
       { role: "assistant", content: "Working… generating LaTeX and compiling PDF." },
     ]);
 
-    // Provide context for “iterative edits” (since backend no longer accepts baseLatex)
-    const contextDoc = (draftLatex || savedLatex || "").trim();
-    const contextBody = contextDoc ? extractDocumentBody(contextDoc) : "";
+    // Iterative edits: send the current LaTeX doc as baseLatex so the backend can modify it.
+    const base = (draftLatex || savedLatex || "").trim();
 
-    const augmentedPrompt = contextBody
-      ? [
-          text,
-          "",
-          "=== CURRENT CONTENT (between \\begin{document} and \\end{document}) ===",
-          contextBody,
-          "",
-          "Update the current content according to my request and return the updated LaTeX.",
-        ].join("\n")
-      : text;
-
-    const gen = await generateLatexFromPrompt(augmentedPrompt, selectedTemplate?.id);
+    const gen = await generateLatexFromPrompt(text, selectedTemplate?.id, base);
     if (!gen.ok) {
       setMessages((m) => replaceLastWorking(m, `Error: ${gen.error}`));
       return;
