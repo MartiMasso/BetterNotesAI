@@ -218,50 +218,54 @@ async function generateLatexFromPrompt(args: {
     "Never output triple backticks.",
   ].join(" ");
 
-  const userParts: string[] = [];
+  // Build a message list so we can support iterative editing when baseLatex is provided.
+  const messages: { role: "system" | "assistant" | "user"; content: string }[] = [
+    { role: "system", content: system },
+  ];
 
-  if (baseLatex?.trim()) {
-    userParts.push(
-      "You are editing an existing LaTeX document. Apply the user's request as a modification.",
-      "Keep the style consistent, and return a FULL compilable LaTeX document if you output a full doc.",
-      "",
-      "=== CURRENT LATEX (baseLatex) ===",
-      baseLatex
-    );
-    userParts.push("");
-  }
-
-  if (wantOnlyBody) {
-    userParts.push(
-      `We will insert your output into a LaTeX template (templateId="${templateId}").`,
-      "Return ONLY the body/content to be inserted at the placeholder, NOT a full document.",
-      "",
-      "=== TEMPLATE (for style reference) ===",
-      templateSource,
-      "",
-      "=== USER REQUEST ===",
-      prompt
-    );
+  // If we have a base LaTeX, we treat this as an edit pass and ask for a FULL updated document.
+  if (typeof baseLatex === "string" && baseLatex.trim()) {
+    messages.push({ role: "assistant", content: baseLatex });
+    messages.push({
+      role: "user",
+      content: `Revise the previous LaTeX above according to: ${prompt}. Return the full updated document.`,
+    });
+  } else if (wantOnlyBody) {
+    // Template has a known placeholder; we only want body content.
+    messages.push({
+      role: "user",
+      content: [
+        `We will insert your output into a LaTeX template (templateId="${templateId}").`,
+        "Return ONLY the body/content to be inserted at the placeholder, NOT a full document.",
+        "",
+        "=== TEMPLATE (for style reference) ===",
+        templateSource,
+        "",
+        "=== USER REQUEST ===",
+        prompt,
+      ].join("\n"),
+    });
   } else {
-    userParts.push(
-      `Create a complete LaTeX document based on templateId="${templateId}".`,
-      "Ensure the final output is a complete compilable .tex file for pdflatex.",
-      "",
-      "=== TEMPLATE (you may adapt) ===",
-      templateSource,
-      "",
-      "=== USER REQUEST ===",
-      prompt
-    );
+    // Generate a full document (no placeholder flow).
+    messages.push({
+      role: "user",
+      content: [
+        `Create a complete LaTeX document based on templateId="${templateId}".`,
+        "Ensure the final output is a complete compilable .tex file for pdflatex.",
+        "",
+        "=== TEMPLATE (you may adapt) ===",
+        templateSource,
+        "",
+        "=== USER REQUEST ===",
+        prompt,
+      ].join("\n"),
+    });
   }
 
   const resp = await openai.chat.completions.create({
     model: OPENAI_MODEL,
     temperature: 0.2,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: userParts.join("\n") },
-    ],
+    messages,
   });
 
   const out = resp.choices?.[0]?.message?.content ?? "";
@@ -328,23 +332,27 @@ app.post("/generate-latex", async (req, res, next) => {
   try {
     const prompt = String(req.body?.prompt ?? "").trim();
     const templateId = String(req.body?.templateId ?? "2cols_portrait").trim();
-    const baseLatex = String(req.body?.baseLatex ?? "");
+    const baseLatexTrimmed = String(req.body?.baseLatex ?? "");
+    const hasBaseLatex = baseLatexTrimmed.trim().length > 0;
 
     if (!prompt) return res.status(400).json({ ok: false, error: "Missing 'prompt'." });
 
     const { source: templateSource } = loadTemplateOrThrow(templateId);
     const placeholder = findPlaceholder(templateSource);
-    const wantOnlyBody = Boolean(placeholder);
+
+    // If baseLatex is provided, we are doing an edit pass and expect a FULL updated document.
+    // Only use the template placeholder flow when we are NOT editing an existing document.
+    const wantOnlyBody = !hasBaseLatex && Boolean(placeholder);
 
     const generated = await generateLatexFromPrompt({
       prompt,
       templateId,
       templateSource,
       wantOnlyBody,
-      baseLatex: baseLatex?.trim() ? baseLatex : undefined,
+      baseLatex: hasBaseLatex ? baseLatexTrimmed.trim() : undefined,
     });
 
-    const latex = placeholder ? templateSource.replace(placeholder, generated) : generated;
+    const latex = wantOnlyBody && placeholder ? templateSource.replace(placeholder, generated) : generated;
 
     return res.json({ ok: true, latex, usedTemplateId: templateId });
   } catch (e) {
