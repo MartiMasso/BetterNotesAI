@@ -112,6 +112,21 @@ function trimHugeLog(s: string, max = 60000) {
   return s.slice(-max);
 }
 
+function makeHttpError(message: string, statusCode: number, log?: string, code?: string) {
+  const err: any = new Error(message);
+  err.statusCode = statusCode;
+  if (log) err.log = log;
+  if (code) err.code = code;
+  return err as Error;
+}
+
+function extractExecOutput(e: any): { stdout?: string; stderr?: string } {
+  return {
+    stdout: typeof e?.stdout === "string" ? e.stdout : undefined,
+    stderr: typeof e?.stderr === "string" ? e.stderr : undefined,
+  };
+}
+
 async function compileLatexToPdf(latexSource: string): Promise<{ pdf: Buffer; log: string }> {
   const workDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "betternotes-tex-"));
   const texPath = path.join(workDir, "main.tex");
@@ -125,36 +140,54 @@ async function compileLatexToPdf(latexSource: string): Promise<{ pdf: Buffer; lo
     const hasLatexmk = await commandExists("latexmk");
 
     if (hasLatexmk) {
-      const { stdout, stderr } = await execFileAsync(
-        "latexmk",
-        [
-          "-pdf",
-          "-interaction=nonstopmode",
-          "-halt-on-error",
-          "-file-line-error",
-          "main.tex",
-        ],
-        { cwd: workDir, timeout: LATEX_TIMEOUT_MS, maxBuffer: 20 * 1024 * 1024 }
-      );
-      log += stdout ?? "";
-      log += stderr ?? "";
+      try {
+        const { stdout, stderr } = await execFileAsync(
+          "latexmk",
+          [
+            "-pdf",
+            "-interaction=nonstopmode",
+            "-halt-on-error",
+            "-file-line-error",
+            "main.tex",
+          ],
+          { cwd: workDir, timeout: LATEX_TIMEOUT_MS, maxBuffer: 20 * 1024 * 1024 }
+        );
+        log += stdout ?? "";
+        log += stderr ?? "";
+      } catch (e: any) {
+        const extra = extractExecOutput(e);
+        log += extra.stdout ?? "";
+        log += extra.stderr ?? "";
+        // bubble up; we'll format a useful HTTP error below if PDF is missing
+      }
     } else {
       const hasPdflatex = await commandExists("pdflatex");
       if (!hasPdflatex) {
-        throw new Error(
-          "[LATEX_TOOLING_MISSING] Neither latexmk nor pdflatex found in PATH. Install TeX Live or use the Docker image."
+        throw makeHttpError(
+          "[LATEX_TOOLING_MISSING] Neither latexmk nor pdflatex found in PATH. Install TeX Live or use the Docker image.",
+          500,
+          undefined,
+          "LATEX_TOOLING_MISSING"
         );
       }
 
       // 2 pasadas
       for (let i = 0; i < 2; i++) {
-        const { stdout, stderr } = await execFileAsync(
-          "pdflatex",
-          ["-interaction=nonstopmode", "-halt-on-error", "-file-line-error", "main.tex"],
-          { cwd: workDir, timeout: LATEX_TIMEOUT_MS, maxBuffer: 20 * 1024 * 1024 }
-        );
-        log += stdout ?? "";
-        log += stderr ?? "";
+        try {
+          const { stdout, stderr } = await execFileAsync(
+            "pdflatex",
+            ["-interaction=nonstopmode", "-halt-on-error", "-file-line-error", "main.tex"],
+            { cwd: workDir, timeout: LATEX_TIMEOUT_MS, maxBuffer: 20 * 1024 * 1024 }
+          );
+          log += stdout ?? "";
+          log += stderr ?? "";
+        } catch (e: any) {
+          const extra = extractExecOutput(e);
+          log += extra.stdout ?? "";
+          log += extra.stderr ?? "";
+          // stop further passes
+          break;
+        }
       }
     }
 
@@ -164,9 +197,16 @@ async function compileLatexToPdf(latexSource: string): Promise<{ pdf: Buffer; lo
         log += "\n\n----- main.log -----\n";
         log += await fs.promises.readFile(texLogPath, "utf8");
       }
-      const err = new Error(`LaTeX compilation failed.\n\n${trimHugeLog(log)}`.trim());
-      (err as any).statusCode = 400;
-      throw err;
+
+      const trimmed = trimHugeLog(log);
+      // Distinguish timeouts a bit better
+      const isTimeout = trimmed.includes("Timeout") || trimmed.includes("ETIMEDOUT");
+      throw makeHttpError(
+        "LaTeX compilation failed.",
+        isTimeout ? 408 : 422,
+        trimmed,
+        isTimeout ? "LATEX_TIMEOUT" : "LATEX_COMPILE_FAILED"
+      );
     }
 
     const pdf = await fs.promises.readFile(pdfPath);
@@ -377,18 +417,16 @@ app.post("/compile", async (req, res, next) => {
     // res.setHeader("X-Latex-Log", Buffer.from(log).toString("base64"));
     return res.status(200).send(pdf);
   } catch (e: any) {
-    // Si el error ya contiene log (nuestro compileLatexToPdf lo mete en message),
-    // lo separamos para que tu UI lo pinte bien.
-    const message = String(e?.message ?? "Compilation failed.");
-    const log = message.includes("-----")
-      ? message
-      : undefined;
-
     const status = Number(e?.statusCode ?? 400);
+    const log = typeof e?.log === "string" ? trimHugeLog(e.log) : undefined;
+    const code = typeof e?.code === "string" ? e.code : undefined;
+    const message = typeof e?.message === "string" ? e.message : "Compilation failed.";
+
     return res.status(status).json({
       ok: false,
-      error: "LaTeX compilation failed.",
-      log: log ? trimHugeLog(log) : undefined,
+      error: message,
+      code,
+      log,
     });
   }
 });
