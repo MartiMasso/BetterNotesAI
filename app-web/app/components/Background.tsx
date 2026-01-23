@@ -1,6 +1,9 @@
 export default function Background() {
   return (
     <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+      {/* Base */}
+      <div className="absolute inset-0 bg-neutral-950" />
+
       {/* Base gradient */}
       <div className="absolute inset-0 bg-[radial-gradient(1200px_600px_at_50%_20%,rgba(99,102,241,0.35),transparent_60%),radial-gradient(900px_500px_at_20%_70%,rgba(236,72,153,0.30),transparent_60%),radial-gradient(900px_500px_at_80%_75%,rgba(34,197,94,0.18),transparent_60%)]" />
 

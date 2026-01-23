@@ -44,13 +44,13 @@ export default function Home() {
 
         <div className="flex items-center gap-2">
           <Link
-            href="/workspace"
+            href="/login"
             className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm hover:bg-white/15 backdrop-blur"
           >
             Log in
           </Link>
           <Link
-            href="/workspace"
+            href="/signup"
             className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-neutral-950 hover:bg-white/90"
           >
             Get started
