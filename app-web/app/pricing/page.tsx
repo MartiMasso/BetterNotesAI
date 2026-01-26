@@ -1,7 +1,73 @@
+
+"use client";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import AppBackground from "../components/AppBackground";
+import { useState } from "react";
+import * as supabaseMod from "../../supabaseClient";
+
+const supabase: any = (supabaseMod as any).supabase ?? (supabaseMod as any).default;
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
+// Set these in app-web/.env.local
+// NEXT_PUBLIC_STRIPE_PRICE_PRO_MONTHLY=price_...
+// NEXT_PUBLIC_STRIPE_PRICE_PRO_YEARLY=price_...
+// NEXT_PUBLIC_STRIPE_PRICE_TEAMS_MONTHLY=price_...
+// NEXT_PUBLIC_STRIPE_PRICE_TEAMS_YEARLY=price_...
+const PRICE_PRO_MONTHLY = process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO_MONTHLY ?? "";
+const PRICE_PRO_YEARLY = process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO_YEARLY ?? "";
+const PRICE_TEAMS_MONTHLY = process.env.NEXT_PUBLIC_STRIPE_PRICE_TEAMS_MONTHLY ?? "";
+const PRICE_TEAMS_YEARLY = process.env.NEXT_PUBLIC_STRIPE_PRICE_TEAMS_YEARLY ?? "";
+
+// Default selection used by the current UI (monthly). We'll add a billing toggle later if you want.
+const PRICE_PRO = PRICE_PRO_MONTHLY;
+const PRICE_TEAMS = PRICE_TEAMS_MONTHLY;
 
 export default function PricingPage() {
+  const [loadingPlan, setLoadingPlan] = useState<null | "pro" | "teams">(null);
+
+  const searchParams = useSearchParams();
+  const success = searchParams.get("success") === "1";
+  const canceled = searchParams.get("canceled") === "1";
+
+  async function startCheckout(priceId: string, plan: "pro" | "teams") {
+    try {
+      if (!supabase) throw new Error("Supabase client not found. Check app-web/supabaseClient.ts exports.");
+      if (!priceId) throw new Error("Missing Stripe priceId. Set NEXT_PUBLIC_STRIPE_PRICE_PRO_MONTHLY/TEAMS_MONTHLY (and optionally *_YEARLY) in app-web/.env.local");
+
+      setLoadingPlan(plan);
+
+      const { data, error } = await supabase.auth.getUser();
+      if (error) throw error;
+      const user = data?.user;
+      if (!user) {
+        window.location.href = "/login";
+        return;
+      }
+
+      const resp = await fetch(`${API_URL}/stripe/create-checkout-session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          priceId,
+          userId: user.id,
+          email: user.email ?? undefined,
+        }),
+      });
+
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json?.error ?? "Failed to create checkout session");
+      if (!json?.url) throw new Error("Checkout session did not return a URL");
+
+      window.location.href = json.url;
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message ?? "Stripe checkout failed");
+    } finally {
+      setLoadingPlan(null);
+    }
+  }
+
   return (
     <main className="relative min-h-screen text-white">
       <AppBackground />
@@ -38,6 +104,36 @@ export default function PricingPage() {
 
       {/* Content */}
       <section className="mx-auto max-w-6xl px-4 pt-10 pb-16">
+        {(success || canceled) && (
+          <div className="mb-6 rounded-2xl border border-white/15 bg-white/10 backdrop-blur p-4 text-sm text-white/80">
+            {success ? (
+              <div>
+                <div className="font-semibold text-white">✅ Payment successful</div>
+                <div className="mt-1 text-white/70">Your subscription is being activated. If it doesn't update in a few seconds, refresh the page.</div>
+                <div className="mt-3 flex gap-2">
+                  <Link
+                    href="/workspace"
+                    className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-neutral-950 hover:bg-white/90"
+                  >
+                    Go to Workspace
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => window.location.reload()}
+                    className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm hover:bg-white/15"
+                  >
+                    Refresh
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div className="font-semibold text-white">Payment canceled</div>
+                <div className="mt-1 text-white/70">No worries — you can try again anytime.</div>
+              </div>
+            )}
+          </div>
+        )}
         <div className="text-center">
           <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight">
             Student-friendly pricing
@@ -75,7 +171,10 @@ export default function PricingPage() {
             highlight
             badge="Most popular"
             ctaText="Upgrade to Pro"
-            ctaHref="/workspace"
+            ctaHref=""
+            onCtaClick={() => startCheckout(PRICE_PRO, "pro")}
+            ctaDisabled={loadingPlan === "pro"}
+            ctaLoading={loadingPlan === "pro"}
             features={[
               "300 monthly credits + 5 daily (up to 450 / month)",
               "Credit rollover (up to 2× monthly)",
@@ -93,8 +192,11 @@ export default function PricingPage() {
             period="/month"
             tagline="For study groups & classes"
             highlight={false}
-            ctaText="Contact us"
-            ctaHref="/discover"
+            ctaText="Upgrade to Teams"
+            ctaHref=""
+            onCtaClick={() => startCheckout(PRICE_TEAMS, "teams")}
+            ctaDisabled={loadingPlan === "teams"}
+            ctaLoading={loadingPlan === "teams"}
             features={[
               "1,200 credits / month (shared pool)",
               "Shared projects & templates",
@@ -151,6 +253,9 @@ function PlanCard({
   ctaHref,
   highlight,
   badge,
+  onCtaClick,
+  ctaDisabled,
+  ctaLoading,
 }: {
   name: string;
   price: string;
@@ -162,6 +267,9 @@ function PlanCard({
   ctaHref: string;
   highlight: boolean;
   badge?: string;
+  onCtaClick?: () => void;
+  ctaDisabled?: boolean;
+  ctaLoading?: boolean;
 }) {
   return (
     <div
@@ -188,17 +296,34 @@ function PlanCard({
         {period && <div className="text-sm text-white/60 mb-1">{period}</div>}
       </div>
 
-      <Link
-        href={ctaHref}
-        className={[
-          "mt-5 block w-full text-center rounded-xl px-3 py-2 text-sm font-semibold",
-          highlight
-            ? "bg-white text-neutral-950 hover:bg-white/90"
-            : "bg-white/10 border border-white/15 text-white hover:bg-white/15",
-        ].join(" ")}
-      >
-        {ctaText}
-      </Link>
+      {onCtaClick ? (
+        <button
+          type="button"
+          onClick={onCtaClick}
+          disabled={Boolean(ctaDisabled)}
+          className={[
+            "mt-5 block w-full text-center rounded-xl px-3 py-2 text-sm font-semibold",
+            highlight
+              ? "bg-white text-neutral-950 hover:bg-white/90"
+              : "bg-white/10 border border-white/15 text-white hover:bg-white/15",
+            ctaDisabled ? "opacity-60 cursor-not-allowed" : "",
+          ].join(" ")}
+        >
+          {ctaLoading ? "Redirecting..." : ctaText}
+        </button>
+      ) : (
+        <Link
+          href={ctaHref}
+          className={[
+            "mt-5 block w-full text-center rounded-xl px-3 py-2 text-sm font-semibold",
+            highlight
+              ? "bg-white text-neutral-950 hover:bg-white/90"
+              : "bg-white/10 border border-white/15 text-white hover:bg-white/15",
+          ].join(" ")}
+        >
+          {ctaText}
+        </Link>
+      )}
 
       <ul className="mt-5 space-y-2 text-sm text-white/80">
         {features.map((f) => (
