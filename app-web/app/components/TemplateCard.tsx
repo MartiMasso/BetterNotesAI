@@ -1,3 +1,5 @@
+"use client";
+
 import Image from "next/image";
 
 type Template = {
@@ -9,17 +11,30 @@ type Template = {
   thumbnailPath?: string;
 };
 
-export default function TemplateCard({ t }: { t: Template }) {
+interface TemplateCardProps {
+  t: Template;
+  onClick?: (template: Template) => void;
+}
+
+export default function TemplateCard({ t, onClick }: TemplateCardProps) {
+  function handleClick(e: React.MouseEvent) {
+    if (onClick) {
+      e.preventDefault();
+      onClick(t);
+    }
+  }
+
   const href = t.previewPath ?? t.publicPath;
 
   return (
     <a
-      href={href}
-      target="_blank"
+      href={onClick ? "#" : href}
+      target={onClick ? undefined : "_blank"}
       rel="noreferrer"
-      className="block rounded-xl border border-neutral-200 bg-white p-3 shadow-sm hover:shadow-md transition"
+      onClick={handleClick}
+      className="block rounded-xl border border-border bg-card p-3 shadow-sm hover:shadow-md hover:bg-accent/50 transition cursor-pointer"
     >
-      <div className="relative w-full aspect-[4/3] overflow-hidden rounded-lg bg-neutral-100">
+      <div className="relative w-full aspect-[4/3] overflow-hidden rounded-lg bg-muted">
         {t.thumbnailPath ? (
           <Image
             src={t.thumbnailPath}
@@ -29,15 +44,15 @@ export default function TemplateCard({ t }: { t: Template }) {
             sizes="(max-width: 768px) 100vw, 33vw"
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-sm text-neutral-500">
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             No preview
           </div>
         )}
       </div>
 
       <div className="mt-3">
-        <div className="font-medium">{t.name}</div>
-        <div className="text-xs text-neutral-500">{t.format.toUpperCase()}</div>
+        <div className="font-medium text-card-foreground">{t.name}</div>
+        <div className="text-xs text-muted-foreground">{t.format.toUpperCase()}</div>
       </div>
     </a>
   );

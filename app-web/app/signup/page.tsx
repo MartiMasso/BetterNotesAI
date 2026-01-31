@@ -48,8 +48,25 @@ export default function SignupPage() {
         <Background />
       </div>
 
-      <div className="mx-auto flex min-h-screen max-w-md items-center px-4 py-16">
+      {/* Minimal header with back link */}
+      <header className="mx-auto max-w-md px-4 pt-8">
+        <Link href="/" className="inline-flex items-center gap-2 text-white/70 hover:text-white transition-colors">
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+          </svg>
+          <span className="text-sm">Back to home</span>
+        </Link>
+      </header>
+
+      <div className="mx-auto flex min-h-[calc(100vh-80px)] max-w-md items-center px-4 py-8">
         <div className="w-full rounded-2xl border border-white/20 bg-white/10 p-6 backdrop-blur">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="h-9 w-9 rounded-xl bg-white/10 border border-white/15 text-white flex items-center justify-center font-semibold">
+              B
+            </div>
+            <div className="font-semibold tracking-tight">BetterNotes</div>
+          </div>
+
           <h1 className="text-2xl font-semibold">Create account</h1>
           <p className="mt-2 text-sm text-white/70">
             Start generating clean notes in minutes.

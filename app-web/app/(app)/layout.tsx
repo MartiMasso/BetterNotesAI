@@ -23,6 +23,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
           <nav className="px-2 py-2 text-sm">
             <SidebarItem label="Home" href="/workspace" />
+            <SidebarItem label="Discover" href="/discover" />
             <SidebarItem label="Templates" href="/templates" />
             <SidebarItem label="Pricing" href="/pricing" />
           </nav>
@@ -33,9 +34,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <div className="text-xs text-white/60 mt-1">
                 Unlock more generations and bigger files.
               </div>
-              <button className="mt-3 w-full rounded-xl bg-white px-3 py-2 text-sm font-semibold text-neutral-950 hover:bg-white/90">
+              <Link 
+                href="/pricing"
+                className="mt-3 block w-full rounded-xl bg-white px-3 py-2 text-sm font-semibold text-neutral-950 hover:bg-white/90 text-center"
+              >
                 Upgrade
-              </button>
+              </Link>
             </div>
           </div>
         </aside>

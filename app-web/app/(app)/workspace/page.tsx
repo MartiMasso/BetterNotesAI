@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import TemplateCardSelect from "@/app/components/TemplateCardSelect";
 import { templates } from "../../../lib/templates";
 
@@ -41,12 +42,24 @@ function splitCompilerOutput(err: string): { message: string; log: string } {
 }
 
 export default function Workspace() {
+  const searchParams = useSearchParams();
   const [mode, setMode] = useState<Mode>("start");
 
   // START mode
   const [startTab, setStartTab] = useState<StartTab>("my");
   const [startInput, setStartInput] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+
+  // Read template from URL on mount
+  useEffect(() => {
+    const templateParam = searchParams.get("template");
+    if (templateParam) {
+      const exists = templates.some((t) => t.id === templateParam);
+      if (exists) {
+        setSelectedTemplateId(templateParam);
+      }
+    }
+  }, [searchParams]);
 
   // PROJECT mode (chat)
   const [messages, setMessages] = useState<Msg[]>([
@@ -93,32 +106,72 @@ export default function Workspace() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const startContent = useMemo(() => {
+  // Input ref for focusing
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  function focusInputWithPrompt(prompt: string) {
+    setStartInput(prompt);
+    inputRef.current?.focus();
+  }
+
+  function renderStartContent() {
     if (startTab === "my") {
       return (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Card title="New Project" subtitle="Create a new BetterNotes project" />
-          <Card title="Exam Cheatsheet" subtitle="Last edited 2h ago" />
-          <Card title="ML Notes" subtitle="Last edited yesterday" />
+          <Card 
+            title="New Project" 
+            subtitle="Create a new BetterNotes project" 
+            onClick={() => inputRef.current?.focus()}
+          />
+          <Card 
+            title="Exam Cheatsheet" 
+            subtitle="Last edited 2h ago" 
+            onClick={() => focusInputWithPrompt("Continue working on my Exam Cheatsheet...")}
+          />
+          <Card 
+            title="ML Notes" 
+            subtitle="Last edited yesterday" 
+            onClick={() => focusInputWithPrompt("Continue working on my ML Notes...")}
+          />
         </div>
       );
     }
     if (startTab === "shared") {
       return (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Card title="QFT Summary (shared)" subtitle="Shared by Alice" />
-          <Card title="Linear Algebra Formulary" subtitle="Shared by Bob" />
+          <Card 
+            title="QFT Summary (shared)" 
+            subtitle="Shared by Alice" 
+            onClick={() => focusInputWithPrompt("Edit the QFT Summary document...")}
+          />
+          <Card 
+            title="Linear Algebra Formulary" 
+            subtitle="Shared by Bob" 
+            onClick={() => focusInputWithPrompt("Edit the Linear Algebra Formulary...")}
+          />
         </div>
       );
     }
     return (
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <Card title="Formula Sheet" subtitle="Turn notes into a formula-only PDF" />
-        <Card title="Summary Notes" subtitle="Clean structured notes + definitions" />
-        <Card title="Flashcards" subtitle="Generate Q/A cards from notes" />
+        <Card 
+          title="Formula Sheet" 
+          subtitle="Turn notes into a formula-only PDF" 
+          onClick={() => focusInputWithPrompt("Generate a formula sheet (equations + definitions only).")}
+        />
+        <Card 
+          title="Summary Notes" 
+          subtitle="Clean structured notes + definitions" 
+          onClick={() => focusInputWithPrompt("Create a clean summary with sections and key definitions.")}
+        />
+        <Card 
+          title="Flashcards" 
+          subtitle="Generate Q/A cards from notes" 
+          onClick={() => focusInputWithPrompt("Generate flashcards (Q/A cards) from my notes.")}
+        />
       </div>
     );
-  }, [startTab]);
+  }
 
   function busy() {
     return isGenerating || isCompiling || isFixing;
@@ -722,6 +775,7 @@ export default function Workspace() {
             </button>
 
             <input
+              ref={inputRef}
               value={startInput}
               onChange={(e) => setStartInput(e.target.value)}
               onKeyDown={(e) => {
@@ -797,10 +851,15 @@ export default function Workspace() {
                   Templates
                 </TabButton>
               </div>
-              <button className="text-sm text-white/70 hover:text-white">Browse all →</button>
+              <Link 
+                href={startTab === "templates" ? "/templates" : "/discover"}
+                className="text-sm text-white/70 hover:text-white"
+              >
+                Browse all →
+              </Link>
             </div>
 
-            <div className="mt-4">{startContent}</div>
+            <div className="mt-4">{renderStartContent()}</div>
           </div>
         </div>
       </div>
@@ -845,9 +904,12 @@ function Chip({ children, onClick }: { children: React.ReactNode; onClick: () =>
   );
 }
 
-function Card({ title, subtitle }: { title: string; subtitle: string }) {
+function Card({ title, subtitle, onClick }: { title: string; subtitle: string; onClick?: () => void }) {
   return (
-    <div className="rounded-2xl border border-white/12 bg-white/8 p-4 hover:bg-white/12 cursor-pointer backdrop-blur">
+    <div 
+      onClick={onClick}
+      className="rounded-2xl border border-white/12 bg-white/8 p-4 hover:bg-white/12 cursor-pointer backdrop-blur transition-colors"
+    >
       <div className="text-sm font-semibold text-white">{title}</div>
       <div className="mt-1 text-xs text-white/60">{subtitle}</div>
     </div>

@@ -12,6 +12,7 @@ export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [user, setUser] = useState<User | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -69,9 +70,10 @@ export default function Home() {
           <div className="font-semibold tracking-tight">BetterNotes</div>
         </div>
 
+        {/* Desktop nav */}
         <nav className="hidden md:flex items-center gap-6 text-sm text-white/70">
-          <Link className="hover:text-white" href="/pricing">
-            Pricing
+          <Link className="hover:text-white" href="/workspace">
+            Workspace
           </Link>
           <Link className="hover:text-white" href="/discover">
             Discover
@@ -79,9 +81,34 @@ export default function Home() {
           <Link className="hover:text-white" href="/templates">
             Templates
           </Link>
+          <Link className="hover:text-white" href="/pricing">
+            Pricing
+          </Link>
         </nav>
 
         <div className="flex items-center gap-2">
+          {/* Mobile hamburger button */}
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen((open) => !open)}
+            className="md:hidden h-10 w-10 rounded-xl border border-white/20 bg-white/10 hover:bg-white/15 flex items-center justify-center"
+            aria-label="Toggle navigation menu"
+          >
+            <svg
+              className="h-5 w-5 text-white/80"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            >
+              {mobileNavOpen ? (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              )}
+            </svg>
+          </button>
+
           {user ? (
             <div ref={menuRef} className="relative">
               <button
@@ -136,6 +163,40 @@ export default function Home() {
         </div>
       </header>
 
+      {/* Mobile nav dropdown */}
+      {mobileNavOpen && (
+        <div className="md:hidden relative z-20 mx-4 mb-4 rounded-2xl border border-white/20 bg-white/10 backdrop-blur-xl p-2 shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_20px_60px_rgba(0,0,0,0.35)]">
+          <Link
+            href="/workspace"
+            onClick={() => setMobileNavOpen(false)}
+            className="block rounded-xl px-3 py-2 text-sm text-white/85 hover:bg-white/10"
+          >
+            Workspace
+          </Link>
+          <Link
+            href="/discover"
+            onClick={() => setMobileNavOpen(false)}
+            className="block rounded-xl px-3 py-2 text-sm text-white/85 hover:bg-white/10"
+          >
+            Discover
+          </Link>
+          <Link
+            href="/templates"
+            onClick={() => setMobileNavOpen(false)}
+            className="block rounded-xl px-3 py-2 text-sm text-white/85 hover:bg-white/10"
+          >
+            Templates
+          </Link>
+          <Link
+            href="/pricing"
+            onClick={() => setMobileNavOpen(false)}
+            className="block rounded-xl px-3 py-2 text-sm text-white/85 hover:bg-white/10"
+          >
+            Pricing
+          </Link>
+        </div>
+      )}
+
       {/* Hero */}
       <section className="relative z-10 mx-auto max-w-4xl px-4 pt-16 pb-10 text-center">
         <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs text-white/80 backdrop-blur">
@@ -159,7 +220,7 @@ export default function Home() {
         <div className="mt-10 mx-auto max-w-3xl rounded-2xl border border-white/20 bg-white/10 p-3 text-left backdrop-blur shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_20px_60px_rgba(0,0,0,0.35)]">
           <div className="flex items-center gap-2">
             <button
-              className="h-10 w-10 rounded-xl border border-white/20 bg-white/10 hover:bg-white/15 flex items-center justify-center"
+              className="h-10 w-10 shrink-0 rounded-xl border border-white/20 bg-white/10 hover:bg-white/15 flex items-center justify-center"
               title="Attach (coming soon)"
             >
               <span className="text-lg">＋</span>
@@ -171,19 +232,20 @@ export default function Home() {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) onSend();
               }}
-              className="h-10 flex-1 rounded-xl border border-white/20 bg-black/20 px-3 text-sm outline-none placeholder:text-white/50 text-white"
+              className="h-10 flex-1 min-w-0 rounded-xl border border-white/20 bg-black/20 px-3 text-sm outline-none placeholder:text-white/50 text-white"
               placeholder="e.g. Make a formula sheet from my Quantum Mechanics lecture notes"
             />
 
             <button
               onClick={onSend}
-              className="h-10 rounded-xl bg-white px-4 text-sm font-semibold text-neutral-950 hover:bg-white/90"
+              className="h-10 shrink-0 rounded-xl bg-white px-4 text-sm font-semibold text-neutral-950 hover:bg-white/90"
             >
               Build now →
             </button>
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-2">
+          {/* Chips - single row with horizontal scroll */}
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
             <Chip onClick={() => setPrompt("Generate a formula sheet (equations + definitions only).")}>
               Formula sheet
             </Chip>
@@ -193,12 +255,15 @@ export default function Home() {
             <Chip onClick={() => setPrompt("Extract key results, theorems, and final formulas.")}>
               Key results
             </Chip>
-          </div>
-
-          <div className="mt-4 flex items-center justify-center gap-3 text-xs text-white/60">
-            <span className="rounded-full border border-white/20 bg-white/10 px-2 py-1">PDF → LaTeX</span>
-            <span className="rounded-full border border-white/20 bg-white/10 px-2 py-1">Compile Preview</span>
-            <span className="rounded-full border border-white/20 bg-white/10 px-2 py-1">Download PDF/.tex</span>
+            <Chip onClick={() => router.push("/templates")}>
+              PDF → LaTeX
+            </Chip>
+            <Chip onClick={() => setPrompt("Compile and preview my LaTeX document.")}>
+              Compile Preview
+            </Chip>
+            <Chip onClick={() => setPrompt("Download as PDF and .tex files.")}>
+              Download PDF/.tex
+            </Chip>
           </div>
         </div>
       </section>
@@ -233,7 +298,7 @@ function Chip({ children, onClick }: { children: React.ReactNode; onClick: () =>
   return (
     <button
       onClick={onClick}
-      className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs text-white/80 hover:bg-white/15"
+      className="shrink-0 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs text-white/80 hover:bg-white/15 whitespace-nowrap"
     >
       {children}
     </button>

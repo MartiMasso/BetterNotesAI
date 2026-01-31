@@ -1,42 +1,13 @@
 import Link from "next/link";
-import AppBackground from "../components/AppBackground";
+import Navbar from "@/app/components/Navbar";
+import AppBackground from "@/app/components/AppBackground";
 
 export default function PricingPage() {
   return (
     <main className="relative min-h-screen text-white">
       <AppBackground />
+      <Navbar />
 
-      {/* Top bar */}
-      <header className="mx-auto max-w-6xl px-4 py-5 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="h-9 w-9 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center font-semibold">
-            B
-          </div>
-          <div className="font-semibold tracking-tight">BetterNotes</div>
-        </Link>
-
-        <nav className="hidden md:flex items-center gap-6 text-sm text-white/70">
-          <Link className="hover:text-white" href="/discover">Discover</Link>
-          <Link className="hover:text-white" href="/workspace">Workspace</Link>
-        </nav>
-
-        <div className="flex items-center gap-2">
-          <Link
-            href="/workspace"
-            className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm hover:bg-white/15 backdrop-blur"
-          >
-            Log in
-          </Link>
-          <Link
-            href="/workspace"
-            className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-neutral-950 hover:bg-white/90"
-          >
-            Get started
-          </Link>
-        </div>
-      </header>
-
-      {/* Content */}
       <section className="mx-auto max-w-6xl px-4 pt-10 pb-16">
         <div className="text-center">
           <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight">
@@ -48,7 +19,6 @@ export default function PricingPage() {
           </p>
         </div>
 
-        {/* Cards */}
         <div className="mt-10 grid gap-4 lg:grid-cols-3">
           <PlanCard
             name="Free"
@@ -106,7 +76,6 @@ export default function PricingPage() {
           />
         </div>
 
-        {/* FAQ */}
         <div className="mt-12 grid gap-4 lg:grid-cols-2">
           <FaqItem
             q="What is a credit?"
@@ -137,8 +106,6 @@ export default function PricingPage() {
     </main>
   );
 }
-
-/* ---------------- components ---------------- */
 
 function PlanCard({
   name,
