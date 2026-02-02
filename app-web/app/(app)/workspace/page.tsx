@@ -230,13 +230,17 @@ function WorkspaceContent() {
    * Side effect: shows appropriate modal if gated.
    */
   const canSendMessage = useCallback(async (): Promise<boolean> => {
+    console.log('[GATE] canSendMessage called', { user: !!user, anonymousMessageSent });
+
     // Case 1: No user and no anonymous message sent yet → allow first message
     if (!user && !anonymousMessageSent) {
+      console.log('[GATE] Allowing first anonymous message');
       return true;
     }
 
     // Case 2: No user but anonymous message was sent → require login
     if (!user && anonymousMessageSent) {
+      console.log('[GATE] Requiring login - showing AuthModal');
       setAuthMessage("Sign up to continue generating documents. Your work will be saved!");
       setShowAuthModal(true);
       return false;
@@ -270,6 +274,7 @@ function WorkspaceContent() {
   const onMessageSent = useCallback(async () => {
     if (!user) {
       // Mark anonymous message as sent
+      console.log('[GATE] onMessageSent - marking anonymous message sent');
       setAnonymousMessageSent(true);
       if (typeof window !== 'undefined') {
         localStorage.setItem('betternotes_anonymous_sent', 'true');
@@ -497,13 +502,19 @@ function WorkspaceContent() {
 
   // ---------- Send flows ----------
   async function startSend() {
-    const text = startInput.trim();
-    if (!text || busy()) return;
+    console.log('[startSend] Called');
 
-    // ========== FREEMIUM GATE ==========
+    // ========== FREEMIUM GATE (check first!) ==========
     const allowed = await canSendMessage();
+    console.log('[startSend] canSendMessage returned:', allowed);
     if (!allowed) return;
     // ===================================
+
+    const text = startInput.trim();
+    if (!text || busy()) {
+      console.log('[startSend] Blocked by text/busy:', { text: !!text, busy: busy() });
+      return;
+    }
 
     setMode("project");
     setStartInput("");
@@ -544,13 +555,19 @@ function WorkspaceContent() {
 
 
   async function projectSend() {
-    const text = projectInput.trim();
-    if (!text || busy()) return;
+    console.log('[projectSend] Called');
 
-    // ========== FREEMIUM GATE ==========
+    // ========== FREEMIUM GATE (check first!) ==========
     const allowed = await canSendMessage();
+    console.log('[projectSend] canSendMessage returned:', allowed);
     if (!allowed) return;
     // ===================================
+
+    const text = projectInput.trim();
+    if (!text || busy()) {
+      console.log('[projectSend] Blocked by text/busy:', { text: !!text, busy: busy() });
+      return;
+    }
 
     setProjectInput("");
 
@@ -749,7 +766,6 @@ function WorkspaceContent() {
 
                 <button
                   onClick={projectSend}
-                  disabled={projectInput.trim().length === 0 || busy()}
                   className={[
                     "h-10 rounded-xl px-4 text-sm font-semibold",
                     projectInput.trim().length > 0 && !busy()
@@ -1029,7 +1045,6 @@ function WorkspaceContent() {
 
             <button
               onClick={startSend}
-              disabled={startInput.trim().length === 0 || busy()}
               className={[
                 "h-10 rounded-xl px-4 text-sm font-semibold",
                 startInput.trim().length > 0 && !busy()
