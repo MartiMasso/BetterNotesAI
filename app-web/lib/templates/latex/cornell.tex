@@ -1,0 +1,264 @@
+\documentclass[10pt]{article}
+
+% =========================
+% Preamble (matching existing templates)
+% =========================
+\usepackage[english]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{lmodern}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage{fancyhdr}
+\usepackage{tikz}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins, breakable}
+
+% Cornell Layout: Wide left margin for cues
+\geometry{a4paper, portrait, left=5.5cm, right=1cm, top=2.5cm, bottom=2cm, marginparwidth=4.5cm, marginparsep=0.5cm}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.3em}
+
+% Colors
+\definecolor{cornellred}{RGB}{179, 27, 27}
+\definecolor{cueblue}{RGB}{0, 70, 140}
+\definecolor{sectiongreen}{RGB}{0, 120, 60}
+\definecolor{defgreen}{RGB}{61,176,0}
+\definecolor{propblue}{RGB}{0, 100, 180}
+\definecolor{thmred}{RGB}{180, 0, 0}
+
+% Header
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textbf{\large Linear Algebra --- Cornell Notes}}
+\fancyhead[R]{\textbf{Chapter 3: Vector Spaces}}
+\renewcommand{\headrulewidth}{1.5pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{cornellred}\leaders\hrule height \headrulewidth\hfill}}
+
+% Cue command (left margin)
+\reversemarginpar
+\newcommand{\cue}[1]{%
+    \marginpar{\raggedright\footnotesize\textcolor{cueblue}{\textbf{#1}}}%
+}
+
+% Theorem-like environments
+\newtheoremstyle{cornellstyle}
+	{0pt}{3pt}{\upshape}{}{\bfseries}{}{ }{}
+\theoremstyle{cornellstyle}
+\newtheorem*{definition}{\textcolor{defgreen}{Def.}}
+\newtheorem*{proposition}{\textcolor{propblue}{Prop.}}
+\newtheorem*{theorem}{\textcolor{thmred}{Thm.}}
+\newtheorem*{corollary}{\textcolor{thmred}{Cor.}}
+\newtheorem*{example}{\textcolor{sectiongreen}{Ex.}}
+\newtheorem*{remark}{\textcolor{cueblue}{Rmk.}}
+
+% Summary box at bottom
+\newcommand{\summary}[1]{
+\vfill
+\begin{tcolorbox}[
+    colback=cornellred!5,
+    colframe=cornellred,
+    title=\textbf{SUMMARY},
+    fonttitle=\bfseries\color{white},
+    coltitle=white,
+    sharp corners,
+    boxrule=1pt,
+    colbacktitle=cornellred
+]
+\small #1
+\end{tcolorbox}
+}
+
+% Section styling
+\usepackage{titlesec}
+\titleformat{\section}{\color{cornellred}\large\bfseries}{}{0em}{}[\vspace{-0.7em}{\color{cornellred}\rule{\linewidth}{0.5pt}}\vspace{0.3em}]
+\titleformat{\subsection}{\color{sectiongreen}\bfseries}{}{0em}{}
+
+\setlist[itemize]{leftmargin=1.2em,itemsep=0.1em,topsep=0.1em}
+\setlist[enumerate]{leftmargin=1.2em,itemsep=0.1em,topsep=0.1em}
+
+\begin{document}
+
+%==========================================================
+\section{Vector Spaces: Foundations}
+%==========================================================
+
+\cue{What is a vector space?}
+\begin{definition}
+A \textbf{vector space} over a field $\mathbb{F}$ is a set $V$ with two operations:
+\begin{enumerate}
+\item \textbf{Addition:} $+: V \times V \to V$
+\item \textbf{Scalar multiplication:} $\cdot: \mathbb{F} \times V \to V$
+\end{enumerate}
+satisfying 8 axioms (closure, associativity, commutativity, identities, inverses, distributivity).
+\end{definition}
+
+\cue{Key examples?}
+\begin{example}
+Common vector spaces:
+\begin{itemize}
+\item $\mathbb{R}^n$ over $\mathbb{R}$ (Euclidean space)
+\item $\mathcal{P}_n(\mathbb{R})$ = polynomials of degree $\leq n$
+\item $\mathcal{M}_{m \times n}(\mathbb{R})$ = $m \times n$ matrices
+\item $C[a,b]$ = continuous functions on $[a,b]$
+\end{itemize}
+\end{example}
+
+\cue{What is a subspace?}
+\begin{definition}
+A subset $W \subseteq V$ is a \textbf{subspace} if:
+\begin{enumerate}
+\item $\mathbf{0} \in W$ (contains zero vector)
+\item $\mathbf{u}, \mathbf{v} \in W \Rightarrow \mathbf{u} + \mathbf{v} \in W$ (closed under addition)
+\item $c \in \mathbb{F}, \mathbf{v} \in W \Rightarrow c\mathbf{v} \in W$ (closed under scalar mult.)
+\end{enumerate}
+\end{definition}
+
+\cue{Subspace test shortcut?}
+\begin{proposition}
+$W \neq \emptyset$ is a subspace $\Leftrightarrow$ $\forall \mathbf{u}, \mathbf{v} \in W, \forall c,d \in \mathbb{F}: c\mathbf{u} + d\mathbf{v} \in W$.
+\end{proposition}
+
+%==========================================================
+\section{Linear Independence \& Span}
+%==========================================================
+
+\cue{Linear combo?}
+\begin{definition}
+A \textbf{linear combination} of $\mathbf{v}_1, \ldots, \mathbf{v}_n$ is:
+\[
+c_1\mathbf{v}_1 + c_2\mathbf{v}_2 + \cdots + c_n\mathbf{v}_n, \quad c_i \in \mathbb{F}
+\]
+\end{definition}
+
+\cue{Span = ?}
+\begin{definition}
+The \textbf{span} of $\{\mathbf{v}_1, \ldots, \mathbf{v}_n\}$ is the set of all linear combinations:
+\[
+\text{span}(\mathbf{v}_1, \ldots, \mathbf{v}_n) = \left\{ \sum_{i=1}^n c_i \mathbf{v}_i : c_i \in \mathbb{F} \right\}
+\]
+This is always a subspace of $V$.
+\end{definition}
+
+\cue{Linear independence?}
+\begin{definition}
+Vectors $\mathbf{v}_1, \ldots, \mathbf{v}_n$ are \textbf{linearly independent} if:
+\[
+c_1\mathbf{v}_1 + \cdots + c_n\mathbf{v}_n = \mathbf{0} \Rightarrow c_1 = c_2 = \cdots = c_n = 0
+\]
+Otherwise, they are \textbf{linearly dependent}.
+\end{definition}
+
+\cue{How to test?}
+\begin{remark}
+For $\mathbb{R}^n$: Put vectors as columns in matrix $A$. They are linearly independent $\Leftrightarrow$ $\det(A) \neq 0$ (if square) or $\text{rank}(A) = n$.
+\end{remark}
+
+%==========================================================
+\section{Basis \& Dimension}
+%==========================================================
+
+\cue{What is a basis?}
+\begin{definition}
+A \textbf{basis} for $V$ is a set $\mathcal{B} = \{\mathbf{v}_1, \ldots, \mathbf{v}_n\}$ such that:
+\begin{enumerate}
+\item $\mathcal{B}$ is linearly independent
+\item $\text{span}(\mathcal{B}) = V$
+\end{enumerate}
+\end{definition}
+
+\cue{Standard basis?}
+\begin{example}
+Standard basis for $\mathbb{R}^3$: $\{\mathbf{e}_1, \mathbf{e}_2, \mathbf{e}_3\} = \{(1,0,0), (0,1,0), (0,0,1)\}$
+
+Standard basis for $\mathcal{P}_2(\mathbb{R})$: $\{1, x, x^2\}$
+\end{example}
+
+\cue{Dimension?}
+\begin{theorem}[Dimension Theorem]
+All bases of a finite-dimensional vector space $V$ have the same number of elements. This number is called the \textbf{dimension} of $V$, denoted $\dim(V)$.
+\end{theorem}
+
+\cue{Key dimensions?}
+\begin{itemize}
+\item $\dim(\mathbb{R}^n) = n$
+\item $\dim(\mathcal{P}_n(\mathbb{R})) = n + 1$
+\item $\dim(\mathcal{M}_{m \times n}) = mn$
+\end{itemize}
+
+\cue{Extend/reduce?}
+\begin{proposition}
+\begin{itemize}
+\item Any linearly independent set can be \textbf{extended} to a basis.
+\item Any spanning set can be \textbf{reduced} to a basis.
+\end{itemize}
+\end{proposition}
+
+%==========================================================
+\section{Coordinates \& Change of Basis}
+%==========================================================
+
+\cue{Coordinate vector?}
+\begin{definition}
+If $\mathcal{B} = \{\mathbf{v}_1, \ldots, \mathbf{v}_n\}$ is a basis and $\mathbf{x} = c_1\mathbf{v}_1 + \cdots + c_n\mathbf{v}_n$, the \textbf{coordinate vector} of $\mathbf{x}$ w.r.t. $\mathcal{B}$ is:
+\[
+[\mathbf{x}]_\mathcal{B} = \begin{pmatrix} c_1 \\ \vdots \\ c_n \end{pmatrix} \in \mathbb{F}^n
+\]
+\end{definition}
+
+\cue{Change of basis?}
+\begin{theorem}
+Let $\mathcal{B}$ and $\mathcal{C}$ be two bases. The \textbf{change of basis matrix} from $\mathcal{B}$ to $\mathcal{C}$ is $P_{\mathcal{C} \leftarrow \mathcal{B}}$ such that:
+\[
+[\mathbf{x}]_\mathcal{C} = P_{\mathcal{C} \leftarrow \mathcal{B}} \cdot [\mathbf{x}]_\mathcal{B}
+\]
+Columns of $P_{\mathcal{C} \leftarrow \mathcal{B}}$ are the $\mathcal{C}$-coordinates of the $\mathcal{B}$-basis vectors.
+\end{theorem}
+
+\cue{Inverse?}
+\begin{corollary}
+$P_{\mathcal{B} \leftarrow \mathcal{C}} = (P_{\mathcal{C} \leftarrow \mathcal{B}})^{-1}$
+\end{corollary}
+
+%==========================================================
+\section{Rank-Nullity Theorem}
+%==========================================================
+
+\cue{Kernel/Image?}
+\begin{definition}
+For linear map $T: V \to W$:
+\begin{itemize}
+\item \textbf{Kernel:} $\ker(T) = \{\mathbf{v} \in V : T(\mathbf{v}) = \mathbf{0}\}$ (nullspace)
+\item \textbf{Image:} $\text{Im}(T) = \{T(\mathbf{v}) : \mathbf{v} \in V\}$ (range)
+\end{itemize}
+\end{definition}
+
+\cue{Rank-Nullity?}
+\begin{theorem}[Rank-Nullity]
+For $T: V \to W$ linear with $\dim(V) < \infty$:
+\[
+\boxed{\dim(\ker T) + \dim(\text{Im } T) = \dim(V)}
+\]
+Equivalently: $\text{nullity}(T) + \text{rank}(T) = \dim(V)$
+\end{theorem}
+
+\cue{For matrices?}
+\begin{remark}
+For $A \in \mathcal{M}_{m \times n}$: $\text{nullity}(A) + \text{rank}(A) = n$ (number of columns).
+\end{remark}
+
+%==========================================================
+\summary{
+\textbf{Vector space:} Set with addition \& scalar mult. satisfying 8 axioms. \textbf{Subspace:} Contains $\mathbf{0}$, closed under $+$ and $\cdot$. \textbf{Span:} All linear combos. \textbf{Linearly independent:} Only trivial solution to $\sum c_i\mathbf{v}_i = 0$. \textbf{Basis:} Linearly indep. + spans $V$. \textbf{Dimension:} \# of basis vectors. \textbf{Rank-Nullity:} $\dim(\ker T) + \dim(\text{Im } T) = \dim(V)$.
+}
+
+% made with BetterNotes-AI
+\begin{flushright}\footnotesize \textit{made with BetterNotes-AI}\end{flushright}
+
+\end{document}
