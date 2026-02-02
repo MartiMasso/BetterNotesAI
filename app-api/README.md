@@ -2,7 +2,7 @@
 
 ## Docker (macOS)
 
-1) Start Docker Desktop::
+1) Start Docker Desktop:
 
 ```bash
 open -a Docker
