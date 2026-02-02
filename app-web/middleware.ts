@@ -3,7 +3,9 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 // Routes that require authentication
-const protectedRoutes = ["/workspace"];
+// NOTE: /workspace is NOT protected - freemium flow handles auth internally
+// This allows anonymous users to see workspace and use 1 free message
+const protectedRoutes: string[] = [];
 
 // Routes that should redirect to workspace if already authenticated
 const authRoutes = ["/login", "/signup"];
@@ -62,5 +64,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-    matcher: ["/workspace/:path*", "/login", "/signup"],
+    matcher: ["/login", "/signup"],
 };
