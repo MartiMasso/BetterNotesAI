@@ -30,6 +30,7 @@ export function createLatexRouter(deps: LatexDeps) {
       "Your LaTeX MUST compile with pdflatex.",
       "Avoid exotic packages. Be conservative and minimal.",
       "Never output triple backticks.",
+      "CRITICAL: Do NOT use environments like 'example', 'theorem', 'proof', 'definition' unless you see them explicitly defined in the provided template preamble (e.g. \\newtheorem). If unsure, use \\textbf{Example:} or \\section*{Example} instead. Violating this leads to compilation errors.",
     ].join(" ");
 
     const messages: { role: "system" | "assistant" | "user"; content: string }[] = [{ role: "system", content: system }];
@@ -90,6 +91,7 @@ export function createLatexRouter(deps: LatexDeps) {
       "Fix the LaTeX so it compiles with pdflatex.",
       "Make the smallest changes necessary.",
       "Never output triple backticks.",
+      "CRITICAL: If the error is 'Environment ... undefined', REPLACE that environment with a standard one (like 'itemize' or just \\textbf{Title}) or remove it. Do not try to define new environments in the body.",
     ].join(" ");
 
     const user = [
