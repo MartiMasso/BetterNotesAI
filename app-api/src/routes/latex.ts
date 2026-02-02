@@ -46,6 +46,7 @@ export function createLatexRouter(deps: LatexDeps) {
         content: [
           `We will insert your output into a LaTeX template (templateId="${templateId}").`,
           "Return ONLY the body/content to be inserted at the placeholder, NOT a full document.",
+          "IMPORTANT: If the user request is generic (e.g. 'formula sheet'), generate REALISTIC DUMMY CONTENT (math formulas, definitions, theorems) suitable for a university-level cheat sheet. Do NOT return empty placeholders like '[Insert formulas here]'. Fill it with actual content.",
           "",
           "=== TEMPLATE (for style reference) ===",
           templateSource,

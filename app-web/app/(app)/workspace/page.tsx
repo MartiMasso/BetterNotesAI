@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import TemplateCardSelect from "@/app/components/TemplateCardSelect";
 import AuthModal from "@/app/components/AuthModal";
 import PaywallModal from "@/app/components/PaywallModal";
+import MyProjects from "@/app/components/MyProjects"; // Integrated component
 import { templates } from "../../../lib/templates";
 import { saveWorkspaceDraft, loadWorkspaceDraft, clearWorkspaceDraft, WorkspaceDraft } from "../../../lib/workspaceDraft";
 import { getUsageStatus, incrementMessageCount, saveChat, updateChat, loadChat, UsageStatus } from "../../../lib/api";
@@ -118,6 +119,7 @@ function WorkspaceContent() {
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (mode === "project") bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -130,7 +132,7 @@ function WorkspaceContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-save draft to localStorage whenever content changes
+  // Auto-save draft
   useEffect(() => {
     if (draftLatex || savedLatex || messages.length > 1) {
       saveWorkspaceDraft({
@@ -151,24 +153,17 @@ function WorkspaceContent() {
     }
   }, []);
 
-  // Function to restore the draft
   const restoreDraft = useCallback(() => {
     if (!pendingDraft) return;
-
     setDraftLatex(pendingDraft.draftLatex);
     setSavedLatex(pendingDraft.savedLatex);
     setMessages(pendingDraft.messages);
-    if (pendingDraft.selectedTemplateId) {
-      setSelectedTemplateId(pendingDraft.selectedTemplateId);
-    }
-    if (pendingDraft.draftLatex || pendingDraft.savedLatex) {
-      setMode("project");
-    }
+    if (pendingDraft.selectedTemplateId) setSelectedTemplateId(pendingDraft.selectedTemplateId);
+    if (pendingDraft.draftLatex || pendingDraft.savedLatex) setMode("project");
     setShowRestoreBanner(false);
     setPendingDraft(null);
   }, [pendingDraft]);
 
-  // Function to dismiss the draft
   const dismissDraft = useCallback(() => {
     clearWorkspaceDraft();
     setShowRestoreBanner(false);
@@ -176,17 +171,13 @@ function WorkspaceContent() {
   }, []);
 
   // ========== AUTH & USAGE EFFECTS ==========
-  // Subscribe to auth state changes
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         setUser(session?.user ?? null);
         if (session?.user) {
-          // Load usage status when user logs in
           const status = await getUsageStatus();
           setUsageStatus(status);
-
-          // Migrate localStorage to DB if needed
           if (event === 'SIGNED_IN') {
             const draft = loadWorkspaceDraft();
             if (draft && (draft.draftLatex || draft.savedLatex || draft.messages.length > 1)) {
@@ -207,7 +198,6 @@ function WorkspaceContent() {
       }
     );
 
-    // Initial session check
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -219,7 +209,6 @@ function WorkspaceContent() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Check if anonymous message was already sent (from localStorage)
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const sent = localStorage.getItem('betternotes_anonymous_sent');
@@ -229,7 +218,6 @@ function WorkspaceContent() {
     }
   }, []);
 
-  // Load chat from URL ?chat=<id> parameter
   useEffect(() => {
     const chatId = searchParams.get("chat");
     if (!chatId || !user) return;
@@ -241,9 +229,7 @@ function WorkspaceContent() {
         setMessages(chat.messages as Msg[] || []);
         setDraftLatex(chat.latex_content || "");
         setSavedLatex(chat.latex_content || "");
-        if (chat.template_id) {
-          setSelectedTemplateId(chat.template_id);
-        }
+        if (chat.template_id) setSelectedTemplateId(chat.template_id);
         if (chat.latex_content || (chat.messages && chat.messages.length > 1)) {
           setMode("project");
         }
@@ -253,182 +239,84 @@ function WorkspaceContent() {
   }, [searchParams, user]);
 
   // ========== GATE LOGIC ==========
-  /**
-   * Check if user can send a message. Returns true if allowed, false if gated.
-   * Side effect: shows appropriate modal if gated.
-   * 
-   * TODO: Re-enable freemium after Supabase SQL is configured correctly
-   */
   const canSendMessage = useCallback(async (): Promise<boolean> => {
     console.log('[GATE] canSendMessage called', { user: !!user, anonymousMessageSent });
 
-    // Case 1: No user and no anonymous message sent yet → allow first message
-    if (!user && !anonymousMessageSent) {
-      console.log('[GATE] Allowing first anonymous message');
-      return true;
-    }
+    if (!user && !anonymousMessageSent) return true;
 
-    // Case 2: No user but anonymous message was sent → require login
     if (!user && anonymousMessageSent) {
-      console.log('[GATE] Requiring login - showing AuthModal');
       setAuthMessage("Sign up to continue generating documents. Your work will be saved!");
       setShowAuthModal(true);
       return false;
     }
 
-    // Case 3: User is logged in → check usage limits
     if (user) {
-      // Refresh usage status
-      const status = await getUsageStatus();
-      setUsageStatus(status);
-
-      if (!status) {
-        // Error getting status, allow message (fail open)
-        console.warn('[GATE] Failed to get usage status, failing open');
+      try {
+        const status = await getUsageStatus();
+        setUsageStatus(status);
+        if (!status) return true; // Fail open
+        if (!status.can_send) {
+          setShowPaywallModal(true);
+          return false;
+        }
+      } catch (e) {
+        console.warn('[GATE] Exception checking usage, failing open', e);
         return true;
       }
-
-      if (!status.can_send) {
-        setShowPaywallModal(true);
-        return false;
-      }
-
       return true;
     }
-
     return true;
   }, [user, anonymousMessageSent]);
 
-  /**
-   * Called after a message is successfully sent (after API call completes)
-   */
   const onMessageSent = useCallback(async (latexContent?: string, newMessages?: Msg[]) => {
     if (!user) {
-      // Mark anonymous message as sent
-      console.log('[GATE] onMessageSent - marking anonymous message sent');
       setAnonymousMessageSent(true);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('betternotes_anonymous_sent', 'true');
-      }
+      if (typeof window !== 'undefined') localStorage.setItem('betternotes_anonymous_sent', 'true');
       return;
     }
 
-    // Increment message count for logged-in user (this is important, so we await)
-    const result = await incrementMessageCount();
-    if (result) {
-      setUsageStatus(prev => prev ? {
-        ...prev,
-        message_count: result.new_count,
-        remaining: result.remaining,
-        can_send: !result.limit_reached
-      } : null);
-    }
-
-    // Auto-save chat to Supabase (fire-and-forget, don't block UI)
-    const messagesToSave = newMessages || messages;
-    void (async () => {
-      try {
-        // Get first user message as title
-        const userMsgs = messagesToSave.filter(m => m.role === 'user');
-        const title = userMsgs[0]?.content.slice(0, 50) || 'Untitled';
-
-        if (currentChatId) {
-          await updateChat(currentChatId, {
-            title,
-            messages: messagesToSave,
-            latex_content: latexContent || savedLatex || draftLatex,
-          });
-        } else {
-          const newChatId = await saveChat({
-            title,
-            messages: messagesToSave,
-            latex_content: latexContent || savedLatex || draftLatex,
-            template_id: selectedTemplateId || undefined,
-          });
-          if (newChatId) {
-            setCurrentChatId(newChatId);
-          }
-        }
-        console.log('[GATE] Chat auto-saved');
-      } catch (e) {
-        console.warn('Failed to auto-save chat:', e);
+    try {
+      const result = await incrementMessageCount();
+      if (result) {
+        setUsageStatus(prev => prev ? {
+          ...prev,
+          message_count: result.new_count,
+          remaining: result.remaining,
+          can_send: !result.limit_reached
+        } : null);
       }
-    })();
+
+      const messagesToSave = newMessages || messages;
+      const userMsgs = messagesToSave.filter(m => m.role === 'user');
+      const title = userMsgs[0]?.content.slice(0, 50) || 'Untitled';
+
+      if (currentChatId) {
+        await updateChat(currentChatId, {
+          title,
+          messages: messagesToSave,
+          latex_content: latexContent || savedLatex || draftLatex,
+        });
+      } else {
+        const newChatId = await saveChat({
+          title,
+          messages: messagesToSave,
+          latex_content: latexContent || savedLatex || draftLatex,
+          template_id: selectedTemplateId || undefined,
+        });
+        if (newChatId) setCurrentChatId(newChatId);
+      }
+    } catch (e) {
+      console.warn('Failed to auto-save chat:', e);
+    }
   }, [user, messages, currentChatId, savedLatex, draftLatex, selectedTemplateId]);
 
-  /**
-   * Handle successful auth from modal
-   */
   const handleAuthSuccess = useCallback(() => {
     setShowAuthModal(false);
-    // Auth state change effect will handle the rest
   }, []);
-
-  // Input ref for focusing
-  const inputRef = useRef<HTMLInputElement | null>(null);
 
   function focusInputWithPrompt(prompt: string) {
     setStartInput(prompt);
     inputRef.current?.focus();
-  }
-
-  function renderStartContent() {
-    if (startTab === "my") {
-      return (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Card
-            title="New Project"
-            subtitle="Create a new BetterNotes project"
-            onClick={() => inputRef.current?.focus()}
-          />
-          <Card
-            title="Exam Cheatsheet"
-            subtitle="Last edited 2h ago"
-            onClick={() => focusInputWithPrompt("Continue working on my Exam Cheatsheet...")}
-          />
-          <Card
-            title="ML Notes"
-            subtitle="Last edited yesterday"
-            onClick={() => focusInputWithPrompt("Continue working on my ML Notes...")}
-          />
-        </div>
-      );
-    }
-    if (startTab === "shared") {
-      return (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Card
-            title="QFT Summary (shared)"
-            subtitle="Shared by Alice"
-            onClick={() => focusInputWithPrompt("Edit the QFT Summary document...")}
-          />
-          <Card
-            title="Linear Algebra Formulary"
-            subtitle="Shared by Bob"
-            onClick={() => focusInputWithPrompt("Edit the Linear Algebra Formulary...")}
-          />
-        </div>
-      );
-    }
-    return (
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <Card
-          title="Formula Sheet"
-          subtitle="Turn notes into a formula-only PDF"
-          onClick={() => focusInputWithPrompt("Generate a formula sheet (equations + definitions only).")}
-        />
-        <Card
-          title="Summary Notes"
-          subtitle="Clean structured notes + definitions"
-          onClick={() => focusInputWithPrompt("Create a clean summary with sections and key definitions.")}
-        />
-        <Card
-          title="Flashcards"
-          subtitle="Generate Q/A cards from notes"
-          onClick={() => focusInputWithPrompt("Generate flashcards (Q/A cards) from my notes.")}
-        />
-      </div>
-    );
   }
 
   function busy() {
@@ -445,6 +333,7 @@ function WorkspaceContent() {
     templateId?: string | null,
     baseLatex?: string
   ): Promise<{ ok: true; latex: string } | { ok: false; error: string }> {
+    console.log('[generate] Starting generation...', { prompt, templateId, hasBase: !!baseLatex });
     try {
       setIsGenerating(true);
 
@@ -452,11 +341,16 @@ function WorkspaceContent() {
       if (templateId) payload.templateId = templateId;
       if (baseLatex?.trim()) payload.baseLatex = baseLatex;
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+
       const r = await fetch(`${API_BASE_URL}/generate-latex`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       const data = await r.json().catch(() => null);
       if (!r.ok) return { ok: false, error: data?.error ?? "Failed to generate LaTeX." };
@@ -465,36 +359,27 @@ function WorkspaceContent() {
       if (!latex.trim()) return { ok: false, error: "Model returned empty LaTeX." };
       return { ok: true, latex };
     } catch (e: any) {
+      if (e.name === 'AbortError') return { ok: false, error: "Request timed out (60s)." };
       return { ok: false, error: e?.message ?? "Generate error" };
     } finally {
       setIsGenerating(false);
     }
   }
 
-  async function compileSavedLatex(): Promise<
-    { ok: true } | { ok: false; error: string; log?: string }
-  > {
+  async function compileSavedLatex(): Promise<{ ok: true } | { ok: false; error: string; log?: string }> {
     if (!savedLatex.trim()) return { ok: false, error: "Nothing to compile." };
-
     const res = await compileDirect(savedLatex);
     if (res.ok) setCompiledLatex(savedLatex);
     return res;
   }
 
-  function saveDraft() {
-    setSavedLatex(draftLatex);
-    setDirty(false);
-  }
-
   async function saveAndCompile() {
-    const toCompile = draftLatex; // compile what user sees
+    const toCompile = draftLatex;
     if (!toCompile.trim()) return { ok: false, error: "Nothing to compile." };
-
     setSavedLatex(toCompile);
     setDirty(false);
     setCompileError("");
     setCompileLog("");
-
     const res = await compileDirect(toCompile);
     if (res.ok) setCompiledLatex(toCompile);
     return res;
@@ -502,24 +387,17 @@ function WorkspaceContent() {
 
   async function fixWithAI() {
     if (!savedLatex.trim() || !compileLog.trim()) return;
-
     setIsFixing(true);
     try {
       const r = await fetch(`${API_BASE_URL}/fix-latex`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          latex: savedLatex,
-          log: compileLog,
-        }),
+        body: JSON.stringify({ latex: savedLatex, log: compileLog }),
       });
-
       const data = await r.json().catch(() => null);
       if (!r.ok) throw new Error(data?.error ?? "Fix failed.");
-
       const fixed = (data?.fixedLatex ?? "").toString();
       if (!fixed.trim()) throw new Error("Fix endpoint returned empty LaTeX.");
-
       setFixCandidate(fixed);
       setShowFixModal(true);
     } catch (e: any) {
@@ -531,15 +409,12 @@ function WorkspaceContent() {
 
   async function applyFixAndCompile() {
     if (!fixCandidate.trim()) return;
-
     setDraftLatex(fixCandidate);
     setSavedLatex(fixCandidate);
     setDirty(false);
     setShowFixModal(false);
-
     setCompileError("");
     setCompileLog("");
-
     await compileSavedLatex();
   }
 
@@ -565,19 +440,11 @@ function WorkspaceContent() {
 
   // ---------- Send flows ----------
   async function startSend() {
-    console.log('[startSend] Called');
-
     const text = startInput.trim();
-    if (!text || busy()) {
-      console.log('[startSend] Blocked by text/busy:', { text: !!text, busy: busy() });
-      return;
-    }
+    if (!text || busy()) return;
 
-    // ========== FREEMIUM GATE ==========
     const allowed = await canSendMessage();
-    console.log('[startSend] canSendMessage returned:', allowed);
     if (!allowed) return;
-    // ===================================
 
     setMode("project");
     setStartInput("");
@@ -586,7 +453,7 @@ function WorkspaceContent() {
     setMessages((m) => [
       ...m,
       { role: "user", content: text },
-      { role: "assistant", content: "Working… generating LaTeX and compiling PDF." },
+      { role: "assistant", content: "Working… generating LaTeX..." },
     ]);
 
     const gen = await generateLatexFromPrompt(text, selectedTemplate?.id);
@@ -595,52 +462,45 @@ function WorkspaceContent() {
       return;
     }
 
-    // ========== COUNT MESSAGE ==========
-    await onMessageSent(gen.latex);
-    // ===================================
-
+    // UPDATE UI IMMEDIATELY
     setDraftLatex(gen.latex);
     setSavedLatex(gen.latex);
     setCompiledLatex("");
     setDirty(false);
     setActiveRightTab("preview");
 
-    const comp = await compileDirect(gen.latex);
+    setMessages((m) => replaceLastWorking(m, `Generated. Compiling PDF...`));
+
+    // RUN TASKS IN PARALLEL
+    const compilePromise = compileDirect(gen.latex);
+    const savePromise = onMessageSent(gen.latex);
+
+    const comp = await compilePromise;
     if (!comp.ok) {
-      setMessages((m) =>
-        replaceLastWorking(m, `Generated LaTeX, but compilation failed. Use “Fix with AI”.`)
-      );
+      setMessages((m) => replaceLastWorking(m, `Generated LaTeX, but compilation failed. Use “Fix with AI”.`));
     } else {
       setCompiledLatex(gen.latex);
-      setMessages((m) => replaceLastWorking(m, `Done. Preview updated on the right.`));
+      setMessages((m) => replaceLastWorking(m, `Done. Preview updated.`));
     }
+
+    await savePromise;
   }
 
-
   async function projectSend() {
-    console.log('[projectSend] Called');
-
     const text = projectInput.trim();
-    if (!text || busy()) {
-      console.log('[projectSend] Blocked by text/busy:', { text: !!text, busy: busy() });
-      return;
-    }
+    if (!text || busy()) return;
 
-    // ========== FREEMIUM GATE ==========
     const allowed = await canSendMessage();
-    console.log('[projectSend] canSendMessage returned:', allowed);
     if (!allowed) return;
-    // ===================================
 
     setProjectInput("");
 
     setMessages((m) => [
       ...m,
       { role: "user", content: text },
-      { role: "assistant", content: "Working… generating LaTeX and compiling PDF." },
+      { role: "assistant", content: "Working… generating LaTeX..." },
     ]);
 
-    // Iterative edits: send the current LaTeX doc as baseLatex so the backend can modify it.
     const base = (draftLatex || savedLatex || "").trim();
 
     const gen = await generateLatexFromPrompt(text, selectedTemplate?.id, base);
@@ -649,118 +509,85 @@ function WorkspaceContent() {
       return;
     }
 
-    // ========== COUNT MESSAGE ==========
-    await onMessageSent(gen.latex);
-    // ===================================
-
+    // UPDATE UI IMMEDIATELY
     setDraftLatex(gen.latex);
     setSavedLatex(gen.latex);
     setDirty(false);
     setActiveRightTab("preview");
 
-    const comp = await compileDirect(gen.latex);
+    setMessages((m) => replaceLastWorking(m, `Generated. Compiling PDF...`));
+
+    // RUN TASKS IN PARALLEL
+    const compilePromise = compileDirect(gen.latex);
+    const savePromise = onMessageSent(gen.latex);
+
+    const comp = await compilePromise;
     if (!comp.ok) {
-      setMessages((m) =>
-        replaceLastWorking(m, `Generated LaTeX, but compilation failed. Use “Fix with AI”.`)
-      );
+      setMessages((m) => replaceLastWorking(m, `Generated LaTeX, but compilation failed. Use “Fix with AI”.`));
     } else {
       setCompiledLatex(gen.latex);
-      setMessages((m) => replaceLastWorking(m, `Done. Preview updated on the right.`));
+      setMessages((m) => replaceLastWorking(m, `Done. Preview updated.`));
     }
+
+    await savePromise;
   }
 
   // helper: compile a direct latex string
-  async function compileDirect(
-    latex: string
-  ): Promise<{ ok: true } | { ok: false; error: string; log?: string }> {
+  async function compileDirect(latex: string): Promise<{ ok: true } | { ok: false; error: string; log?: string }> {
     setCompileError("");
     setCompileLog("");
-
     try {
       setIsCompiling(true);
-
       const r = await fetch(`${API_BASE_URL}/compile`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ latex }),
       });
-
       const ct = (r.headers.get("content-type") || "").toLowerCase();
 
-      // ---------- SUCCESS ----------
       if (r.ok) {
-        // Case A: backend returns raw PDF bytes
         if (ct.includes("application/pdf")) {
           const buf = await r.arrayBuffer();
           if (!buf || buf.byteLength === 0) {
-            const msg = "Compile succeeded but PDF response was empty.";
-            setCompileError(msg);
-            return { ok: false, error: msg };
+            setCompileError("PDF response empty.");
+            return { ok: false, error: "PDF response empty." };
           }
-
           const blob = new Blob([buf], { type: "application/pdf" });
-          setPdfUrl((prev) => {
-            if (prev) URL.revokeObjectURL(prev);
-            return URL.createObjectURL(blob);
-          });
-
-          setCompileError("");
-          setCompileLog("");
+          setPdfUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(blob); });
           return { ok: true };
         }
-
-        // Case B: backend returns JSON with pdfBase64
         const data = await r.json().catch(() => null);
-
-        const pdfBase64 =
-          (data?.pdfBase64 ?? data?.pdf_base64 ?? data?.pdf ?? "").toString();
-
+        const pdfBase64 = (data?.pdfBase64 ?? data?.pdf_base64 ?? data?.pdf ?? "").toString();
         if (!pdfBase64.trim()) {
-          const msg =
-            "Compile succeeded but PDF payload was empty (missing pdfBase64). " +
-            "Fix backend to return { pdfBase64 } OR return application/pdf.";
+          const msg = "PDF payload empty.";
           setCompileError(msg);
-          // if backend sends log even on success, keep it
           if (data?.log) setCompileLog(String(data.log));
-          return { ok: false, error: msg, log: data?.log ? String(data.log) : "" };
+          return { ok: false, error: msg, log: data?.log ?? "" };
         }
-
         const bytes = base64ToUint8Array(pdfBase64);
         const blob = new Blob([bytes], { type: "application/pdf" });
-
-        setPdfUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev);
-          return URL.createObjectURL(blob);
-        });
-
-        setCompileError("");
-        setCompileLog("");
+        setPdfUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(blob); });
         return { ok: true };
       }
 
-      // ---------- ERROR ----------
-      // Try JSON error first
       const data = await r.json().catch(() => null);
       const rawErr = (data?.error ?? "Compilation failed.").toString();
-
       const { message, log } = splitCompilerOutput(rawErr);
       setCompileError(message);
       setCompileLog(log || (data?.log ? String(data.log) : ""));
       return { ok: false, error: message, log: log || (data?.log ? String(data.log) : "") };
     } catch (e: any) {
-      const msg = e?.message ?? "Compile error";
-      setCompileError(msg);
-      return { ok: false, error: msg };
+      setCompileError(e?.message || "Compile error");
+      return { ok: false, error: e?.message || "Compile error" };
     } finally {
       setIsCompiling(false);
     }
   }
 
-
   function replaceLastWorking(m: Msg[], newText: string) {
     const copy = [...m];
     for (let i = copy.length - 1; i >= 0; i--) {
-      if (copy[i].role === "assistant" && copy[i].content.includes("Working…")) {
+      if (copy[i].role === "assistant" && (copy[i].content.includes("Working…") || copy[i].content.includes("Generating") || copy[i].content.includes("Compiling"))) {
         copy[i] = { role: "assistant", content: newText };
         break;
       }
@@ -768,497 +595,201 @@ function WorkspaceContent() {
     return copy;
   }
 
-  // ---------- RENDER ----------
+  function renderStartContent() {
+    if (startTab === "my") {
+      return (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Card title="New Project" subtitle="Create a new BetterNotes project" onClick={() => inputRef.current?.focus()} />
+          <MyProjects />
+        </div>
+      );
+    }
+    if (startTab === "shared") {
+      return (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Card title="QFT Summary (shared)" subtitle="Shared by Alice" onClick={() => focusInputWithPrompt("Edit the QFT Summary document...")} />
+          <Card title="Linear Algebra Formulary" subtitle="Shared by Bob" onClick={() => focusInputWithPrompt("Edit the Linear Algebra Formulary...")} />
+        </div>
+      );
+    }
+    return (
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {templates.map(t => (
+          <Card key={t.id} title={t.name} subtitle={t.description} onClick={() => focusInputWithPrompt(`Use the ${t.name} template to...`)} />
+        ))}
+      </div>
+    );
+  }
+
   if (mode === "project") {
     const canSaveAndCompile = draftLatex.trim().length > 0 && !busy();
-
     return (
       <main className="min-h-screen text-white">
         <div className="grid grid-cols-1 lg:grid-cols-[420px_1fr] min-h-screen">
-          {/* LEFT: chat */}
           <aside className="border-r border-white/10 bg-white/5 backdrop-blur flex flex-col">
             <div className="px-4 py-4 border-b border-white/10 flex items-center justify-between">
               <div>
                 <div className="text-sm font-semibold">Project</div>
                 <div className="text-xs text-white/60">Chat → LaTeX → PDF</div>
               </div>
-              <button
-                onClick={() => setMode("start")}
-                className="text-xs rounded-xl border border-white/15 bg-white/10 px-2 py-1 hover:bg-white/15"
-              >
-                ← Back
-              </button>
+              <button onClick={() => setMode("start")} className="text-xs rounded-xl border border-white/15 bg-white/10 px-2 py-1 hover:bg-white/15">← Back</button>
             </div>
-
             <div className="flex-1 overflow-auto px-4 py-4 space-y-3">
               {messages.map((m, idx) => (
-                <div
-                  key={idx}
-                  className={[
-                    "max-w-[92%] rounded-2xl px-3 py-2 text-sm leading-relaxed border",
-                    m.role === "user"
-                      ? "ml-auto bg-white/10 border-white/15"
-                      : "mr-auto bg-black/20 border-white/10",
-                  ].join(" ")}
-                >
-                  {m.content}
-                </div>
+                <div key={idx} className={["max-w-[92%] rounded-2xl px-3 py-2 text-sm leading-relaxed border", m.role === "user" ? "ml-auto bg-white/10 border-white/15" : "mr-auto bg-black/20 border-white/10"].join(" ")}>{m.content}</div>
               ))}
               <div ref={bottomRef} />
             </div>
-
             <div className="p-4 border-t border-white/10">
               <div className="flex items-center gap-2">
-                <button
-                  className="h-10 w-10 rounded-xl border border-white/15 bg-white/10 hover:bg-white/15"
-                  title="Attach (next step)"
-                  disabled
-                >
-                  +
-                </button>
-
+                <button className="h-10 w-10 rounded-xl border border-white/15 bg-white/10 hover:bg-white/15" title="Attach (next step)" disabled>+</button>
                 <input
                   value={projectInput}
                   onChange={(e) => setProjectInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) projectSend();
-                  }}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) projectSend(); }}
                   className="h-10 flex-1 rounded-xl border border-white/15 bg-black/20 px-3 text-sm outline-none placeholder:text-white/45 text-white"
                   placeholder="Ask BetterNotes to create…"
                 />
-
                 <button
                   onClick={projectSend}
-                  className={[
-                    "h-10 rounded-xl px-4 text-sm font-semibold",
-                    projectInput.trim().length > 0 && !busy()
-                      ? "bg-white text-neutral-950 hover:bg-white/90"
-                      : "bg-white/20 text-white/60 cursor-not-allowed",
-                  ].join(" ")}
+                  className={["h-10 rounded-xl px-4 text-sm font-semibold", projectInput.trim().length > 0 && !busy() ? "bg-white text-neutral-950 hover:bg-white/90" : "bg-white/20 text-white/60 cursor-not-allowed"].join(" ")}
                 >
                   {isGenerating ? "Generating…" : isCompiling ? "Compiling…" : isFixing ? "Fixing…" : "Send"}
                 </button>
               </div>
             </div>
           </aside>
-
-          {/* RIGHT: result */}
           <section className="flex flex-col">
             <div className="px-5 py-4 border-b border-white/10 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold">Result</div>
                 <div className="text-xs text-white/60">
-                  {!draftLatex
-                    ? "Send a prompt to generate LaTeX + PDF."
-                    : !pdfUrl
-                      ? "No PDF yet — compile to generate the preview."
-                      : previewOutdated
-                        ? "Preview is outdated — run Save & Compile to update."
-                        : "PDF preview is up to date."}
+                  {!draftLatex ? "Send a prompt to generate LaTeX + PDF." : !pdfUrl ? "No PDF yet — compile to generate the preview." : previewOutdated ? "Preview is outdated — run Save & Compile to update." : "PDF preview is up to date."}
                 </div>
               </div>
-
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => setActiveRightTab("preview")}
-                  className={[
-                    "rounded-xl px-3 py-2 text-sm border",
-                    activeRightTab === "preview"
-                      ? "bg-white text-neutral-950 border-white"
-                      : "bg-white/10 text-white/85 border-white/15 hover:bg-white/15",
-                  ].join(" ")}
-                >
-                  Preview
-                </button>
-
-                <button
-                  onClick={() => setActiveRightTab("latex")}
-                  className={[
-                    "rounded-xl px-3 py-2 text-sm border",
-                    activeRightTab === "latex"
-                      ? "bg-white text-neutral-950 border-white"
-                      : "bg-white/10 text-white/85 border-white/15 hover:bg-white/15",
-                  ].join(" ")}
-                >
-                  LaTeX
-                </button>
-
+                <button onClick={() => setActiveRightTab("preview")} className={["rounded-xl px-3 py-2 text-sm border", activeRightTab === "preview" ? "bg-white text-neutral-950 border-white" : "bg-white/10 text-white/85 border-white/15 hover:bg-white/15"].join(" ")}>Preview</button>
+                <button onClick={() => setActiveRightTab("latex")} className={["rounded-xl px-3 py-2 text-sm border", activeRightTab === "latex" ? "bg-white text-neutral-950 border-white" : "bg-white/10 text-white/85 border-white/15 hover:bg-white/15"].join(" ")}>LaTeX</button>
                 <div className="w-px h-7 bg-white/10 mx-1" />
-
-                <button
-                  onClick={saveAndCompile}
-                  disabled={!canSaveAndCompile}
-                  className={[
-                    "rounded-xl px-3 py-2 text-sm font-semibold",
-                    canSaveAndCompile
-                      ? "bg-white text-neutral-950 hover:bg-white/90"
-                      : "bg-white/20 text-white/60 cursor-not-allowed",
-                  ].join(" ")}
-                >
-                  Compile
-                </button>
-
+                <button onClick={saveAndCompile} disabled={!canSaveAndCompile} className={["rounded-xl px-3 py-2 text-sm font-semibold", canSaveAndCompile ? "bg-white text-neutral-950 hover:bg-white/90" : "bg-white/20 text-white/60 cursor-not-allowed"].join(" ")}>Compile</button>
                 <div className="w-px h-7 bg-white/10 mx-1" />
-
-                <button
-                  onClick={downloadTex}
-                  disabled={!draftLatex.trim()}
-                  className="rounded-xl px-3 py-2 text-sm border border-white/15 bg-white/10 hover:bg-white/15 disabled:opacity-40"
-                >
-                  .tex
-                </button>
-
-                <button
-                  onClick={downloadPdf}
-                  disabled={!pdfUrl}
-                  className="rounded-xl px-3 py-2 text-sm border border-white/15 bg-white/10 hover:bg-white/15 disabled:opacity-40"
-                >
-                  PDF
-                </button>
+                <button onClick={downloadTex} disabled={!draftLatex.trim()} className="rounded-xl px-3 py-2 text-sm border border-white/15 bg-white/10 hover:bg-white/15 disabled:opacity-40">.tex</button>
+                <button onClick={downloadPdf} disabled={!pdfUrl} className="rounded-xl px-3 py-2 text-sm border border-white/15 bg-white/10 hover:bg-white/15 disabled:opacity-40">PDF</button>
               </div>
             </div>
-
             <div className="flex-1 p-5 flex flex-col gap-3">
-              {/* main viewer/editor */}
               <div className="flex-1 rounded-2xl border border-white/10 bg-white/5 backdrop-blur overflow-hidden">
                 {activeRightTab === "preview" ? (
-                  pdfUrl ? (
-                    <iframe title="PDF Preview" src={pdfUrl} className="w-full h-full" />
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-white/60 text-sm">
-                      No PDF yet. Send a prompt on the left.
-                    </div>
-                  )
+                  pdfUrl ? <iframe title="PDF Preview" src={pdfUrl} className="w-full h-full" /> : <div className="h-full flex items-center justify-center text-white/60 text-sm">No PDF yet. Send a prompt on the left.</div>
                 ) : (
-                  <textarea
-                    value={draftLatex}
-                    onChange={(e) => {
-                      setDraftLatex(e.target.value);
-                      setDirty(e.target.value !== savedLatex);
-                    }}
-                    className="w-full h-full bg-transparent p-4 font-mono text-sm outline-none text-white/90"
-                    placeholder="LaTeX will appear here…"
-                  />
+                  <textarea value={draftLatex} onChange={(e) => { setDraftLatex(e.target.value); setDirty(e.target.value !== savedLatex); }} className="w-full h-full bg-transparent p-4 font-mono text-sm outline-none text-white/90" placeholder="LaTeX will appear here…" />
                 )}
               </div>
-
-              {/* compile error panel */}
               {compileError ? (
                 <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <div className="text-sm font-semibold text-red-200">Compilation failed</div>
                       <div className="text-xs text-red-200/80 mt-1">{compileError}</div>
-                      {pdfUrl ? (
-                        <div className="text-xs text-white/60 mt-2">
-                          Showing last valid PDF preview. Fix and recompile to update.
-                        </div>
-                      ) : null}
+                      {pdfUrl ? <div className="text-xs text-white/60 mt-2">Showing last valid PDF preview. Fix and recompile to update.</div> : null}
                     </div>
-
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => {
-                          setCompileError("");
-                          setCompileLog("");
-                        }}
-                        className="rounded-xl px-3 py-2 text-sm border border-white/15 bg-white/10 hover:bg-white/15"
-                      >
-                        Dismiss
-                      </button>
-
-                      <button
-                        onClick={fixWithAI}
-                        disabled={!compileLog.trim() || busy()}
-                        className={[
-                          "rounded-xl px-3 py-2 text-sm font-semibold",
-                          compileLog.trim() && !busy()
-                            ? "bg-white text-neutral-950 hover:bg-white/90"
-                            : "bg-white/20 text-white/60 cursor-not-allowed",
-                        ].join(" ")}
-                      >
-                        {isFixing ? "Fixing…" : "Fix with AI"}
-                      </button>
+                      <button onClick={() => { setCompileError(""); setCompileLog(""); }} className="rounded-xl px-3 py-2 text-sm border border-white/15 bg-white/10 hover:bg-white/15">Dismiss</button>
+                      <button onClick={fixWithAI} disabled={!compileLog.trim() || busy()} className={["rounded-xl px-3 py-2 text-sm font-semibold", compileLog.trim() && !busy() ? "bg-white text-neutral-950 hover:bg-white/90" : "bg-white/20 text-white/60 cursor-not-allowed"].join(" ")}>{isFixing ? "Fixing…" : "Fix with AI"}</button>
                     </div>
                   </div>
-
-                  {compileLog ? (
-                    <pre className="mt-3 max-h-44 overflow-auto rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-white/75">
-                      {compileLog}
-                    </pre>
-                  ) : null}
+                  {compileLog ? <pre className="mt-3 max-h-44 overflow-auto rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-white/75">{compileLog}</pre> : null}
                 </div>
               ) : null}
             </div>
           </section>
         </div>
-
-        {/* Fix modal */}
-        {showFixModal ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/60" onClick={() => setShowFixModal(false)} />
-            <div className="relative w-full max-w-4xl rounded-2xl border border-white/15 bg-neutral-950/90 backdrop-blur p-4 shadow-[0_20px_60px_rgba(0,0,0,0.6)]">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold">AI Fix suggestion</div>
-                  <div className="text-xs text-white/60 mt-1">
-                    Review the fixed LaTeX. Apply it if it looks good.
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowFixModal(false)}
-                  className="rounded-xl px-3 py-2 text-sm border border-white/15 bg-white/10 hover:bg-white/15"
-                >
-                  Close
-                </button>
-              </div>
-
-              <textarea
-                value={fixCandidate}
-                onChange={(e) => setFixCandidate(e.target.value)}
-                className="mt-4 w-full h-[50vh] rounded-2xl border border-white/10 bg-black/30 p-4 font-mono text-sm outline-none text-white/90"
-              />
-
-              <div className="mt-3 flex items-center justify-end gap-2">
-                <button
-                  onClick={() => setShowFixModal(false)}
-                  className="rounded-xl px-3 py-2 text-sm border border-white/15 bg-white/10 hover:bg-white/15"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={applyFixAndCompile}
-                  className="rounded-xl px-4 py-2 text-sm font-semibold bg-white text-neutral-950 hover:bg-white/90"
-                >
-                  Apply fix & Compile
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
+        <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onSuccess={handleAuthSuccess} message={authMessage} />
+        <PaywallModal isOpen={showPaywallModal} onClose={() => setShowPaywallModal(false)} remaining={usageStatus?.remaining} resetsAt={usageStatus?.resets_at} />
       </main>
     );
   }
 
-  // -------- START MODE (initial UI) --------
   return (
     <main className="relative min-h-screen text-white">
-      {/* Restore Draft Banner */}
       {showRestoreBanner && pendingDraft && (
         <div className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 border-b border-emerald-400/30 backdrop-blur-sm">
           <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="h-8 w-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                <svg className="h-4 w-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-white">You have unsaved work</p>
-                <p className="text-xs text-white/60">Would you like to continue where you left off?</p>
-              </div>
+              <div className="h-8 w-8 rounded-full bg-emerald-500/20 flex items-center justify-center"><svg className="h-4 w-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
+              <div><p className="text-sm font-medium text-white">You have unsaved work</p></div>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={dismissDraft}
-                className="px-3 py-1.5 text-xs rounded-lg border border-white/15 bg-white/10 hover:bg-white/15 transition-colors"
-              >
-                Start fresh
-              </button>
-              <button
-                onClick={restoreDraft}
-                className="px-3 py-1.5 text-xs rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white font-medium transition-colors"
-              >
-                Restore work
-              </button>
+              <button onClick={dismissDraft} className="px-3 py-1.5 text-xs rounded-lg border border-white/15 bg-white/10 hover:bg-white/15">Start fresh</button>
+              <button onClick={restoreDraft} className="px-3 py-1.5 text-xs rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white font-medium">Restore work</button>
             </div>
           </div>
         </div>
       )}
-
       <div className="mx-auto max-w-5xl px-4 pt-16 pb-44">
         <div className="text-center">
           <h1 className="mt-6 text-3xl sm:text-5xl font-semibold tracking-tight">What should we build?</h1>
-          <p className="mt-3 text-white/70">
-            Example: “Generate a formula sheet from my lecture notes (LaTeX + PDF)”.
-          </p>
+          <p className="mt-3 text-white/70">Example: “Generate a formula sheet from my lecture notes (LaTeX + PDF)”.</p>
         </div>
-
-        {/* Input box */}
-        <div className="mt-10 mx-auto max-w-3xl rounded-2xl border border-white/15 bg-white/10 p-3 backdrop-blur shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_20px_60px_rgba(0,0,0,0.35)]">
+        <div className="mt-10 mx-auto max-w-3xl rounded-2xl border border-white/15 bg-white/10 p-3 backdrop-blur">
           <div className="flex items-center gap-2">
-            <button
-              className="h-10 w-10 rounded-xl border border-white/15 bg-white/10 hover:bg-white/15 flex items-center justify-center"
-              title="Attach (coming soon)"
-              disabled
-            >
-              <span className="text-lg">＋</span>
-            </button>
-
-            <input
-              ref={inputRef}
-              value={startInput}
-              onChange={(e) => setStartInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) startSend();
-              }}
-              className="h-10 flex-1 rounded-xl border border-white/15 bg-black/20 px-3 text-sm outline-none placeholder:text-white/45 text-white"
-              placeholder="Ask BetterNotes to create a project that..."
-            />
-
-            <button
-              onClick={startSend}
-              className={[
-                "h-10 rounded-xl px-4 text-sm font-semibold",
-                startInput.trim().length > 0 && !busy()
-                  ? "bg-white text-neutral-950 hover:bg-white/90"
-                  : "bg-white/20 text-white/60 cursor-not-allowed",
-              ].join(" ")}
-            >
-              {isGenerating ? "Generating…" : isCompiling ? "Compiling…" : isFixing ? "Fixing…" : "Send"}
-            </button>
+            <input ref={inputRef} value={startInput} onChange={(e) => setStartInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) startSend(); }} className="h-10 flex-1 rounded-xl border border-white/15 bg-black/20 px-3 text-sm outline-none placeholder:text-white/45 text-white" placeholder="Ask BetterNotes to create a project that..." />
+            <button onClick={startSend} className={["h-10 rounded-xl px-4 text-sm font-semibold", startInput.trim() && !busy() ? "bg-white text-neutral-950" : "bg-white/20 text-white/60"].join(" ")}>{isGenerating ? "Generating…" : "Send"}</button>
           </div>
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Chip onClick={() => setStartInput("Turn my PDF into a formula sheet (LaTeX + PDF).")}>
-              Formula sheet
-            </Chip>
-            <Chip onClick={() => setStartInput("Summarize these notes into clean sections with definitions.")}>
-              Summary notes
-            </Chip>
-            <Chip onClick={() => setStartInput("Extract only theorems/definitions and key equations.")}>
-              Key results
-            </Chip>
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            <Chip onClick={() => setStartInput("Formula sheet for Physics")}>Formula sheet</Chip>
+            <Chip onClick={() => setStartInput("Summary of History notes")}>Summary</Chip>
           </div>
         </div>
-
-        {/* Recommended Templates */}
         <div className="mt-8 mx-auto max-w-4xl">
-          <div className="flex flex-col items-center text-center">
-            <h2 className="text-lg font-semibold text-white">Recommended Templates</h2>
-            <p className="text-sm text-white/60">Pick one to start faster</p>
-            <Link href="/templates" className="mt-2 text-sm text-white/70 hover:text-white">
-              View all →
-            </Link>
-          </div>
-
+          <div className="flex flex-col items-center text-center"><h2 className="text-lg font-semibold text-white">Recommended Templates</h2></div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {templates.map((t) => (
-              <TemplateCardSelect
-                key={t.id}
-                t={t as any}
-                selected={selectedTemplateId === t.id}
-                onSelect={() => setSelectedTemplateId((current) => (current === t.id ? null : t.id))}
-              />
+            {templates.slice(0, 4).map(t => (
+              <TemplateCardSelect key={t.id} t={t as any} selected={selectedTemplateId === t.id} onSelect={() => setSelectedTemplateId(curr => curr === t.id ? null : t.id)} />
             ))}
           </div>
         </div>
       </div>
-
-      {/* Bottom tabs */}
-      <div className="fixed left-0 right-0 bottom-0 md:left-64">
+      <div className="fixed left-0 right-0 bottom-0 md:left-64 z-10 pointer-events-none">
         <div className="mx-auto max-w-6xl px-4 pb-4">
-          <div className="rounded-2xl border border-white/15 bg-white/10 backdrop-blur p-3 shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_20px_60px_rgba(0,0,0,0.35)]">
+          <div className="rounded-2xl border border-white/15 bg-white/10 backdrop-blur p-3 pointer-events-auto">
             <div className="flex items-center justify-between gap-3">
               <div className="flex gap-2">
-                <TabButton active={startTab === "my"} onClick={() => setStartTab("my")}>
-                  My projects
-                </TabButton>
-                <TabButton active={startTab === "shared"} onClick={() => setStartTab("shared")}>
-                  Shared with me
-                </TabButton>
-                <TabButton active={startTab === "templates"} onClick={() => setStartTab("templates")}>
-                  Templates
-                </TabButton>
+                <TabButton active={startTab === "my"} onClick={() => setStartTab("my")}>My projects</TabButton>
+                <TabButton active={startTab === "shared"} onClick={() => setStartTab("shared")}>Shared with me</TabButton>
+                <TabButton active={startTab === "templates"} onClick={() => setStartTab("templates")}>Templates</TabButton>
               </div>
-              <Link
-                href={startTab === "templates" ? "/templates" : "/discover"}
-                className="text-sm text-white/70 hover:text-white"
-              >
-                Browse all →
-              </Link>
+              <Link href="/discover" className="text-sm text-white/70 hover:text-white">Browse all →</Link>
             </div>
-
             <div className="mt-4">{renderStartContent()}</div>
           </div>
         </div>
       </div>
-
-      {/* ========== FREEMIUM MODALS ========== */}
-      <AuthModal
-        isOpen={showAuthModal}
-        onClose={() => setShowAuthModal(false)}
-        onSuccess={handleAuthSuccess}
-        message={authMessage}
-      />
-      <PaywallModal
-        isOpen={showPaywallModal}
-        onClose={() => setShowPaywallModal(false)}
-        remaining={usageStatus?.remaining}
-        resetsAt={usageStatus?.resets_at}
-      />
+      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onSuccess={handleAuthSuccess} message={authMessage} />
+      <PaywallModal isOpen={showPaywallModal} onClose={() => setShowPaywallModal(false)} remaining={usageStatus?.remaining} resetsAt={usageStatus?.resets_at} />
     </main>
   );
 }
 
-/* ---------------- UI bits ---------------- */
-
-function TabButton({
-  children,
-  active,
-  onClick,
-}: {
-  children: React.ReactNode;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={[
-        "rounded-xl px-3 py-2 text-sm border",
-        active
-          ? "bg-white text-neutral-950 border-white"
-          : "bg-white/10 text-white/85 border-white/15 hover:bg-white/15",
-      ].join(" ")}
-    >
-      {children}
-    </button>
-  );
+function TabButton({ children, active, onClick }: { children: React.ReactNode; active: boolean; onClick: () => void }) {
+  return <button onClick={onClick} className={["rounded-xl px-3 py-2 text-sm border", active ? "bg-white text-neutral-950 border-white" : "bg-white/10 text-white/85 border-white/15 hover:bg-white/15"].join(" ")}>{children}</button>;
 }
 
 function Chip({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs text-white/80 hover:bg-white/15"
-    >
-      {children}
-    </button>
-  );
+  return <button onClick={onClick} className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs text-white/80 hover:bg-white/15">{children}</button>;
 }
 
 function Card({ title, subtitle, onClick }: { title: string; subtitle: string; onClick?: () => void }) {
   return (
-    <div
-      onClick={onClick}
-      className="rounded-2xl border border-white/12 bg-white/8 p-4 hover:bg-white/12 cursor-pointer backdrop-blur transition-colors"
-    >
+    <div onClick={onClick} className="rounded-2xl border border-white/12 bg-white/8 p-4 hover:bg-white/12 cursor-pointer backdrop-blur transition-colors">
       <div className="text-sm font-semibold text-white">{title}</div>
       <div className="mt-1 text-xs text-white/60">{subtitle}</div>
     </div>
   );
 }
 
-// Wrapper component with Suspense boundary for useSearchParams()
-export default function Workspace() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center text-white/60">
-        Loading workspace...
-      </div>
-    }>
-      <WorkspaceContent />
-    </Suspense>
-  );
+function Workspace() {
+  return <Suspense fallback={<div className="min-h-screen text-white/60 p-10">Loading workspace...</div>}><WorkspaceContent /></Suspense>;
 }
+
+export default Workspace;
