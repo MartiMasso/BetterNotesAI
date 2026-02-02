@@ -58,7 +58,7 @@ export default function LoginPage() {
             </div>
             <div className="font-semibold tracking-tight">BetterNotes</div>
           </div>
-          
+
           <h1 className="text-2xl font-semibold">Log in</h1>
           <p className="mt-2 text-sm text-white/70">
             Access your BetterNotes workspace.
@@ -117,12 +117,17 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-4 text-xs text-white/60">
-            No account yet?{" "}
-            <Link href="/signup" className="text-white hover:underline">
-              Create one
+          <div className="mt-4 flex items-center justify-between text-xs text-white/60">
+            <div>
+              No account yet?{" "}
+              <Link href="/signup" className="text-white hover:underline">
+                Create one
+              </Link>
+              .
+            </div>
+            <Link href="/forgot-password" className="text-white hover:underline">
+              Forgot password?
             </Link>
-            .
           </div>
         </div>
       </div>

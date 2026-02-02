@@ -1,10 +1,16 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import TemplateCardSelect from "@/app/components/TemplateCardSelect";
+import AuthModal from "@/app/components/AuthModal";
+import PaywallModal from "@/app/components/PaywallModal";
 import { templates } from "../../../lib/templates";
+import { saveWorkspaceDraft, loadWorkspaceDraft, clearWorkspaceDraft, WorkspaceDraft } from "../../../lib/workspaceDraft";
+import { getUsageStatus, incrementMessageCount, saveChat, UsageStatus } from "../../../lib/api";
+import { supabase } from "@/supabaseClient";
+import type { User } from "@supabase/supabase-js";
 
 type Mode = "start" | "project";
 type StartTab = "my" | "shared" | "templates";
@@ -93,6 +99,19 @@ function WorkspaceContent() {
   const [fixCandidate, setFixCandidate] = useState<string>(""); // suggested fixed latex (full document)
   const [showFixModal, setShowFixModal] = useState(false);
 
+  // Draft restoration state
+  const [showRestoreBanner, setShowRestoreBanner] = useState(false);
+  const [pendingDraft, setPendingDraft] = useState<WorkspaceDraft | null>(null);
+
+  // ========== FREEMIUM STATE ==========
+  const [user, setUser] = useState<User | null>(null);
+  const [usageStatus, setUsageStatus] = useState<UsageStatus | null>(null);
+  const [anonymousMessageSent, setAnonymousMessageSent] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showPaywallModal, setShowPaywallModal] = useState(false);
+  const [authMessage, setAuthMessage] = useState("");
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -104,6 +123,177 @@ function WorkspaceContent() {
       if (pdfUrl) URL.revokeObjectURL(pdfUrl);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-save draft to localStorage whenever content changes
+  useEffect(() => {
+    if (draftLatex || savedLatex || messages.length > 1) {
+      saveWorkspaceDraft({
+        draftLatex,
+        savedLatex,
+        messages,
+        selectedTemplateId,
+      });
+    }
+  }, [draftLatex, savedLatex, messages, selectedTemplateId]);
+
+  // Check for saved draft on mount
+  useEffect(() => {
+    const draft = loadWorkspaceDraft();
+    if (draft && (draft.draftLatex || draft.savedLatex || draft.messages.length > 1)) {
+      setPendingDraft(draft);
+      setShowRestoreBanner(true);
+    }
+  }, []);
+
+  // Function to restore the draft
+  const restoreDraft = useCallback(() => {
+    if (!pendingDraft) return;
+
+    setDraftLatex(pendingDraft.draftLatex);
+    setSavedLatex(pendingDraft.savedLatex);
+    setMessages(pendingDraft.messages);
+    if (pendingDraft.selectedTemplateId) {
+      setSelectedTemplateId(pendingDraft.selectedTemplateId);
+    }
+    if (pendingDraft.draftLatex || pendingDraft.savedLatex) {
+      setMode("project");
+    }
+    setShowRestoreBanner(false);
+    setPendingDraft(null);
+  }, [pendingDraft]);
+
+  // Function to dismiss the draft
+  const dismissDraft = useCallback(() => {
+    clearWorkspaceDraft();
+    setShowRestoreBanner(false);
+    setPendingDraft(null);
+  }, []);
+
+  // ========== AUTH & USAGE EFFECTS ==========
+  // Subscribe to auth state changes
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          // Load usage status when user logs in
+          const status = await getUsageStatus();
+          setUsageStatus(status);
+
+          // Migrate localStorage to DB if needed
+          if (event === 'SIGNED_IN') {
+            const draft = loadWorkspaceDraft();
+            if (draft && (draft.draftLatex || draft.savedLatex || draft.messages.length > 1)) {
+              const chatId = await saveChat({
+                template_id: draft.selectedTemplateId || undefined,
+                latex_content: draft.savedLatex || draft.draftLatex,
+                messages: draft.messages,
+              });
+              if (chatId) {
+                setCurrentChatId(chatId);
+                clearWorkspaceDraft();
+              }
+            }
+          }
+        } else {
+          setUsageStatus(null);
+        }
+      }
+    );
+
+    // Initial session check
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        const status = await getUsageStatus();
+        setUsageStatus(status);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Check if anonymous message was already sent (from localStorage)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const sent = localStorage.getItem('betternotes_anonymous_sent');
+      if (sent === 'true') {
+        setAnonymousMessageSent(true);
+      }
+    }
+  }, []);
+
+  // ========== GATE LOGIC ==========
+  /**
+   * Check if user can send a message. Returns true if allowed, false if gated.
+   * Side effect: shows appropriate modal if gated.
+   */
+  const canSendMessage = useCallback(async (): Promise<boolean> => {
+    // Case 1: No user and no anonymous message sent yet → allow first message
+    if (!user && !anonymousMessageSent) {
+      return true;
+    }
+
+    // Case 2: No user but anonymous message was sent → require login
+    if (!user && anonymousMessageSent) {
+      setAuthMessage("Sign up to continue generating documents. Your work will be saved!");
+      setShowAuthModal(true);
+      return false;
+    }
+
+    // Case 3: User is logged in → check usage limits
+    if (user) {
+      // Refresh usage status
+      const status = await getUsageStatus();
+      setUsageStatus(status);
+
+      if (!status) {
+        // Error getting status, allow message (fail open)
+        return true;
+      }
+
+      if (!status.can_send) {
+        setShowPaywallModal(true);
+        return false;
+      }
+
+      return true;
+    }
+
+    return true;
+  }, [user, anonymousMessageSent]);
+
+  /**
+   * Called after a message is successfully sent (after API call completes)
+   */
+  const onMessageSent = useCallback(async () => {
+    if (!user) {
+      // Mark anonymous message as sent
+      setAnonymousMessageSent(true);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('betternotes_anonymous_sent', 'true');
+      }
+    } else {
+      // Increment message count for logged-in user
+      const result = await incrementMessageCount();
+      if (result) {
+        setUsageStatus(prev => prev ? {
+          ...prev,
+          message_count: result.new_count,
+          remaining: result.remaining,
+          can_send: !result.limit_reached
+        } : null);
+      }
+    }
+  }, [user]);
+
+  /**
+   * Handle successful auth from modal
+   */
+  const handleAuthSuccess = useCallback(() => {
+    setShowAuthModal(false);
+    // Auth state change effect will handle the rest
   }, []);
 
   // Input ref for focusing
@@ -310,6 +500,11 @@ function WorkspaceContent() {
     const text = startInput.trim();
     if (!text || busy()) return;
 
+    // ========== FREEMIUM GATE ==========
+    const allowed = await canSendMessage();
+    if (!allowed) return;
+    // ===================================
+
     setMode("project");
     setStartInput("");
     setProjectInput("");
@@ -325,6 +520,10 @@ function WorkspaceContent() {
       setMessages((m) => replaceLastWorking(m, `Error: ${gen.error}`));
       return;
     }
+
+    // ========== COUNT MESSAGE ==========
+    await onMessageSent();
+    // ===================================
 
     setDraftLatex(gen.latex);
     setSavedLatex(gen.latex);
@@ -343,9 +542,15 @@ function WorkspaceContent() {
     }
   }
 
+
   async function projectSend() {
     const text = projectInput.trim();
     if (!text || busy()) return;
+
+    // ========== FREEMIUM GATE ==========
+    const allowed = await canSendMessage();
+    if (!allowed) return;
+    // ===================================
 
     setProjectInput("");
 
@@ -363,6 +568,10 @@ function WorkspaceContent() {
       setMessages((m) => replaceLastWorking(m, `Error: ${gen.error}`));
       return;
     }
+
+    // ========== COUNT MESSAGE ==========
+    await onMessageSent();
+    // ===================================
 
     setDraftLatex(gen.latex);
     setSavedLatex(gen.latex);
@@ -755,6 +964,39 @@ function WorkspaceContent() {
   // -------- START MODE (initial UI) --------
   return (
     <main className="relative min-h-screen text-white">
+      {/* Restore Draft Banner */}
+      {showRestoreBanner && pendingDraft && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 border-b border-emerald-400/30 backdrop-blur-sm">
+          <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                <svg className="h-4 w-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-white">You have unsaved work</p>
+                <p className="text-xs text-white/60">Would you like to continue where you left off?</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={dismissDraft}
+                className="px-3 py-1.5 text-xs rounded-lg border border-white/15 bg-white/10 hover:bg-white/15 transition-colors"
+              >
+                Start fresh
+              </button>
+              <button
+                onClick={restoreDraft}
+                className="px-3 py-1.5 text-xs rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white font-medium transition-colors"
+              >
+                Restore work
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto max-w-5xl px-4 pt-16 pb-44">
         <div className="text-center">
           <h1 className="mt-6 text-3xl sm:text-5xl font-semibold tracking-tight">What should we build?</h1>
@@ -863,6 +1105,20 @@ function WorkspaceContent() {
           </div>
         </div>
       </div>
+
+      {/* ========== FREEMIUM MODALS ========== */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onSuccess={handleAuthSuccess}
+        message={authMessage}
+      />
+      <PaywallModal
+        isOpen={showPaywallModal}
+        onClose={() => setShowPaywallModal(false)}
+        remaining={usageStatus?.remaining}
+        resetsAt={usageStatus?.resets_at}
+      />
     </main>
   );
 }
