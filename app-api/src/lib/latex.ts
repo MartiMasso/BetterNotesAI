@@ -50,47 +50,65 @@ export function injectTheoremFallbacks(latex: string): string {
     { name: "obs", title: "Observation" },
   ];
 
-  const needs = envs.filter((env) => new RegExp(`\\\\begin\\s*\\{${env.name}\\}`).test(latex));
+  // Check which environments are USED in the document
+  // Regex matches \begin{envname} with optional whitespace
+  const needs = envs.filter((env) => {
+    const pattern = new RegExp(`\\\\begin\\s*\\{${env.name}\\}`);
+    return pattern.test(latex);
+  });
   if (!needs.length) return latex;
 
-  const beginDocMatch = latex.match(/\\begin\\s*\\{document\\}/);
+  // Check which environments are already DEFINED via \newtheorem{envname}
+  const alreadyDefined = new Set<string>();
+  for (const env of needs) {
+    const defPattern = new RegExp(`\\\\newtheorem\\s*\\{${env.name}\\}`);
+    if (defPattern.test(latex)) {
+      alreadyDefined.add(env.name);
+    }
+  }
+
+  // Filter to only environments that need to be injected
+  const toInject = needs.filter((env) => !alreadyDefined.has(env.name));
+  if (!toInject.length) return latex;
+
+  // Find \begin{document}
+  const beginDocMatch = latex.match(/\\begin\s*\{document\}/);
   if (!beginDocMatch || beginDocMatch.index === undefined) return latex;
 
-  // Ensure amsthm exists (otherwise \newtheorem is undefined)
-  const wantAmsthm = needs.length > 0;
-  const hasAmsthm = /\\usepackage(\[[^\]]*\])?\{amsthm\}/.test(latex);
+  // Check if amsthm is already loaded (handles \usepackage{amsthm} and \usepackage{amsmath,amsthm,...})
+  const hasAmsthm = /\\usepackage\s*(\[[^\]]*\])?\s*\{[^}]*amsthm[^}]*\}/.test(latex);
 
-  const theoremDefs = needs.map((env) => `\\providecommand{\\bn@tmp}{}\\newtheorem{${env.name}}{${env.title}}`).join("\n");
-
-  // NOTE: \newtheorem will error if env already defined.
-  // So we guard with \ifcsname <env>\endcsname (works for commands; environments are macros too).
-  const guarded = needs
-    .map(
-      (env) =>
-        `\\expandafter\\ifx\\csname ${env.name}\\endcsname\\relax\\newtheorem{${env.name}}{${env.title}}\\fi`
-    )
-    .join("\n");
-
+  // Build injection block with proper LaTeX formatting
   const injectionLines: string[] = [];
   injectionLines.push("% BN_THEOREM_FALLBACKS");
-  if (wantAmsthm && !hasAmsthm) injectionLines.push("\\usepackage{amsthm}");
-  injectionLines.push(guarded);
+
+  if (!hasAmsthm) {
+    injectionLines.push("\\usepackage{amsthm}");
+  }
+
+  // Simple direct \newtheorem definitions
+  // We've already filtered out environments that are already defined
+  for (const env of toInject) {
+    injectionLines.push(`\\newtheorem{${env.name}}{${env.title}}`);
+  }
 
   const insertAt = beginDocMatch.index;
   return `${latex.slice(0, insertAt)}${injectionLines.join("\n")}\n\n${latex.slice(insertAt)}`;
 }
 
 export function injectCommonMathFallbacks(latex: string): string {
-  const beginDocMatch = latex.match(/\\begin\\s*\\{document\\}/);
+  // Find \begin{document}
+  const beginDocMatch = latex.match(/\\begin\s*\{document\}/);
   if (!beginDocMatch || beginDocMatch.index === undefined) return latex;
 
   const marker = "% BN_MATH_FALLBACKS";
   if (latex.includes(marker)) return latex;
 
-  const wantsAbs = /\\abs\\s*\{/.test(latex);
-  const wantsNorm = /\\norm\\s*\{/.test(latex);
-  const wantsColoneqq = /\\coloneqq\\b/.test(latex);
-  const wantsGenerated = /\\generated\\s*\{/.test(latex);
+  // Check for usage of custom math commands
+  const wantsAbs = /\\abs\s*\{/.test(latex);
+  const wantsNorm = /\\norm\s*\{/.test(latex);
+  const wantsColoneqq = /\\coloneqq\b/.test(latex);
+  const wantsGenerated = /\\generated\s*\{/.test(latex);
 
   const defs: string[] = [marker];
   if (wantsAbs) defs.push("\\providecommand{\\abs}[1]{\\left|#1\\right|}");
@@ -200,6 +218,6 @@ export async function compileLatexToPdf(
   } finally {
     try {
       await fs.promises.rm(workDir, { recursive: true, force: true });
-    } catch {}
+    } catch { }
   }
 }
