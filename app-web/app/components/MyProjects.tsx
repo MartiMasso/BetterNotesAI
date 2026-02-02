@@ -36,20 +36,38 @@ export default function MyProjects() {
 
     // Load user's chats when logged in
     useEffect(() => {
+        let mounted = true;
+
         async function fetchChats() {
             if (!user) {
-                setChats([]);
-                setLoading(false);
+                if (mounted) {
+                    setChats([]);
+                    setLoading(false);
+                }
                 return;
             }
 
-            setLoading(true);
-            const userChats = await loadChats();
-            setChats(userChats);
-            setLoading(false);
+            try {
+                if (mounted) setLoading(true);
+                const userChats = await loadChats();
+                if (mounted) {
+                    setChats(userChats);
+                    setLoading(false);
+                }
+            } catch (error) {
+                console.warn("MyProjects: Failed to load chats", error);
+                if (mounted) {
+                    setChats([]);
+                    setLoading(false);
+                }
+            }
         }
 
         fetchChats();
+
+        return () => {
+            mounted = false;
+        };
     }, [user]);
 
     // Don't show section if not logged in

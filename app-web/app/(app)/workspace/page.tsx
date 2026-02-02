@@ -56,7 +56,7 @@ function WorkspaceContent() {
   const [startInput, setStartInput] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
-  // Read template from URL on mount
+  // Read template and prompt from URL on mount
   useEffect(() => {
     const templateParam = searchParams.get("template");
     if (templateParam) {
@@ -64,6 +64,11 @@ function WorkspaceContent() {
       if (exists) {
         setSelectedTemplateId(templateParam);
       }
+    }
+
+    const promptParam = searchParams.get("prompt");
+    if (promptParam) {
+      setStartInput(promptParam);
     }
   }, [searchParams]);
 
@@ -251,6 +256,8 @@ function WorkspaceContent() {
   /**
    * Check if user can send a message. Returns true if allowed, false if gated.
    * Side effect: shows appropriate modal if gated.
+   * 
+   * TODO: Re-enable freemium after Supabase SQL is configured correctly
    */
   const canSendMessage = useCallback(async (): Promise<boolean> => {
     console.log('[GATE] canSendMessage called', { user: !!user, anonymousMessageSent });
@@ -277,6 +284,7 @@ function WorkspaceContent() {
 
       if (!status) {
         // Error getting status, allow message (fail open)
+        console.warn('[GATE] Failed to get usage status, failing open');
         return true;
       }
 

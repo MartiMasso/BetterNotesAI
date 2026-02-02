@@ -46,7 +46,7 @@ export default function Home() {
 
   function onSend() {
     if (!prompt.trim()) return;
-    router.push("/workspace");
+    router.push(`/workspace?prompt=${encodeURIComponent(prompt.trim())}`);
   }
 
   async function onSignOut() {
