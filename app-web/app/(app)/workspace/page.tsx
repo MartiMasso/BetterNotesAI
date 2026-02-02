@@ -8,7 +8,7 @@ import AuthModal from "@/app/components/AuthModal";
 import PaywallModal from "@/app/components/PaywallModal";
 import { templates } from "../../../lib/templates";
 import { saveWorkspaceDraft, loadWorkspaceDraft, clearWorkspaceDraft, WorkspaceDraft } from "../../../lib/workspaceDraft";
-import { getUsageStatus, incrementMessageCount, saveChat, UsageStatus } from "../../../lib/api";
+import { getUsageStatus, incrementMessageCount, saveChat, updateChat, loadChat, UsageStatus } from "../../../lib/api";
 import { supabase } from "@/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 
@@ -224,6 +224,29 @@ function WorkspaceContent() {
     }
   }, []);
 
+  // Load chat from URL ?chat=<id> parameter
+  useEffect(() => {
+    const chatId = searchParams.get("chat");
+    if (!chatId || !user) return;
+
+    async function loadChatFromUrl() {
+      const chat = await loadChat(chatId!);
+      if (chat) {
+        setCurrentChatId(chat.id);
+        setMessages(chat.messages as Msg[] || []);
+        setDraftLatex(chat.latex_content || "");
+        setSavedLatex(chat.latex_content || "");
+        if (chat.template_id) {
+          setSelectedTemplateId(chat.template_id);
+        }
+        if (chat.latex_content || (chat.messages && chat.messages.length > 1)) {
+          setMode("project");
+        }
+      }
+    }
+    loadChatFromUrl();
+  }, [searchParams, user]);
+
   // ========== GATE LOGIC ==========
   /**
    * Check if user can send a message. Returns true if allowed, false if gated.
@@ -271,7 +294,7 @@ function WorkspaceContent() {
   /**
    * Called after a message is successfully sent (after API call completes)
    */
-  const onMessageSent = useCallback(async () => {
+  const onMessageSent = useCallback(async (latexContent?: string) => {
     if (!user) {
       // Mark anonymous message as sent
       console.log('[GATE] onMessageSent - marking anonymous message sent');
@@ -290,8 +313,37 @@ function WorkspaceContent() {
           can_send: !result.limit_reached
         } : null);
       }
+
+      // Auto-save chat to Supabase
+      try {
+        // Get first user message as title
+        const userMessages = messages.filter(m => m.role === 'user');
+        const title = userMessages[0]?.content.slice(0, 50) || 'Untitled';
+
+        if (currentChatId) {
+          // Update existing chat
+          await updateChat(currentChatId, {
+            title,
+            messages,
+            latex_content: latexContent || savedLatex || draftLatex,
+          });
+        } else {
+          // Create new chat
+          const newChatId = await saveChat({
+            title,
+            messages,
+            latex_content: latexContent || savedLatex || draftLatex,
+            template_id: selectedTemplateId || undefined,
+          });
+          if (newChatId) {
+            setCurrentChatId(newChatId);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to auto-save chat:', e);
+      }
     }
-  }, [user]);
+  }, [user, messages, currentChatId, savedLatex, draftLatex, selectedTemplateId]);
 
   /**
    * Handle successful auth from modal
@@ -533,7 +585,7 @@ function WorkspaceContent() {
     }
 
     // ========== COUNT MESSAGE ==========
-    await onMessageSent();
+    await onMessageSent(gen.latex);
     // ===================================
 
     setDraftLatex(gen.latex);
@@ -587,7 +639,7 @@ function WorkspaceContent() {
     }
 
     // ========== COUNT MESSAGE ==========
-    await onMessageSent();
+    await onMessageSent(gen.latex);
     // ===================================
 
     setDraftLatex(gen.latex);
