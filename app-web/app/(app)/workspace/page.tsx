@@ -294,7 +294,7 @@ function WorkspaceContent() {
   /**
    * Called after a message is successfully sent (after API call completes)
    */
-  const onMessageSent = useCallback(async (latexContent?: string) => {
+  const onMessageSent = useCallback(async (latexContent?: string, newMessages?: Msg[]) => {
     if (!user) {
       // Mark anonymous message as sent
       console.log('[GATE] onMessageSent - marking anonymous message sent');
@@ -302,36 +302,38 @@ function WorkspaceContent() {
       if (typeof window !== 'undefined') {
         localStorage.setItem('betternotes_anonymous_sent', 'true');
       }
-    } else {
-      // Increment message count for logged-in user
-      const result = await incrementMessageCount();
-      if (result) {
-        setUsageStatus(prev => prev ? {
-          ...prev,
-          message_count: result.new_count,
-          remaining: result.remaining,
-          can_send: !result.limit_reached
-        } : null);
-      }
+      return;
+    }
 
-      // Auto-save chat to Supabase
+    // Increment message count for logged-in user (this is important, so we await)
+    const result = await incrementMessageCount();
+    if (result) {
+      setUsageStatus(prev => prev ? {
+        ...prev,
+        message_count: result.new_count,
+        remaining: result.remaining,
+        can_send: !result.limit_reached
+      } : null);
+    }
+
+    // Auto-save chat to Supabase (fire-and-forget, don't block UI)
+    const messagesToSave = newMessages || messages;
+    void (async () => {
       try {
         // Get first user message as title
-        const userMessages = messages.filter(m => m.role === 'user');
-        const title = userMessages[0]?.content.slice(0, 50) || 'Untitled';
+        const userMsgs = messagesToSave.filter(m => m.role === 'user');
+        const title = userMsgs[0]?.content.slice(0, 50) || 'Untitled';
 
         if (currentChatId) {
-          // Update existing chat
           await updateChat(currentChatId, {
             title,
-            messages,
+            messages: messagesToSave,
             latex_content: latexContent || savedLatex || draftLatex,
           });
         } else {
-          // Create new chat
           const newChatId = await saveChat({
             title,
-            messages,
+            messages: messagesToSave,
             latex_content: latexContent || savedLatex || draftLatex,
             template_id: selectedTemplateId || undefined,
           });
@@ -339,10 +341,11 @@ function WorkspaceContent() {
             setCurrentChatId(newChatId);
           }
         }
+        console.log('[GATE] Chat auto-saved');
       } catch (e) {
         console.warn('Failed to auto-save chat:', e);
       }
-    }
+    })();
   }, [user, messages, currentChatId, savedLatex, draftLatex, selectedTemplateId]);
 
   /**
@@ -556,17 +559,17 @@ function WorkspaceContent() {
   async function startSend() {
     console.log('[startSend] Called');
 
-    // ========== FREEMIUM GATE (check first!) ==========
-    const allowed = await canSendMessage();
-    console.log('[startSend] canSendMessage returned:', allowed);
-    if (!allowed) return;
-    // ===================================
-
     const text = startInput.trim();
     if (!text || busy()) {
       console.log('[startSend] Blocked by text/busy:', { text: !!text, busy: busy() });
       return;
     }
+
+    // ========== FREEMIUM GATE ==========
+    const allowed = await canSendMessage();
+    console.log('[startSend] canSendMessage returned:', allowed);
+    if (!allowed) return;
+    // ===================================
 
     setMode("project");
     setStartInput("");
@@ -609,17 +612,17 @@ function WorkspaceContent() {
   async function projectSend() {
     console.log('[projectSend] Called');
 
-    // ========== FREEMIUM GATE (check first!) ==========
-    const allowed = await canSendMessage();
-    console.log('[projectSend] canSendMessage returned:', allowed);
-    if (!allowed) return;
-    // ===================================
-
     const text = projectInput.trim();
     if (!text || busy()) {
       console.log('[projectSend] Blocked by text/busy:', { text: !!text, busy: busy() });
       return;
     }
+
+    // ========== FREEMIUM GATE ==========
+    const allowed = await canSendMessage();
+    console.log('[projectSend] canSendMessage returned:', allowed);
+    if (!allowed) return;
+    // ===================================
 
     setProjectInput("");
 
