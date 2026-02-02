@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import TemplateCardSelect from "@/app/components/TemplateCardSelect";
@@ -41,7 +41,7 @@ function splitCompilerOutput(err: string): { message: string; log: string } {
   return { message, log };
 }
 
-export default function Workspace() {
+function WorkspaceContent() {
   const searchParams = useSearchParams();
   const [mode, setMode] = useState<Mode>("start");
 
@@ -118,19 +118,19 @@ export default function Workspace() {
     if (startTab === "my") {
       return (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Card 
-            title="New Project" 
-            subtitle="Create a new BetterNotes project" 
+          <Card
+            title="New Project"
+            subtitle="Create a new BetterNotes project"
             onClick={() => inputRef.current?.focus()}
           />
-          <Card 
-            title="Exam Cheatsheet" 
-            subtitle="Last edited 2h ago" 
+          <Card
+            title="Exam Cheatsheet"
+            subtitle="Last edited 2h ago"
             onClick={() => focusInputWithPrompt("Continue working on my Exam Cheatsheet...")}
           />
-          <Card 
-            title="ML Notes" 
-            subtitle="Last edited yesterday" 
+          <Card
+            title="ML Notes"
+            subtitle="Last edited yesterday"
             onClick={() => focusInputWithPrompt("Continue working on my ML Notes...")}
           />
         </div>
@@ -139,14 +139,14 @@ export default function Workspace() {
     if (startTab === "shared") {
       return (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Card 
-            title="QFT Summary (shared)" 
-            subtitle="Shared by Alice" 
+          <Card
+            title="QFT Summary (shared)"
+            subtitle="Shared by Alice"
             onClick={() => focusInputWithPrompt("Edit the QFT Summary document...")}
           />
-          <Card 
-            title="Linear Algebra Formulary" 
-            subtitle="Shared by Bob" 
+          <Card
+            title="Linear Algebra Formulary"
+            subtitle="Shared by Bob"
             onClick={() => focusInputWithPrompt("Edit the Linear Algebra Formulary...")}
           />
         </div>
@@ -154,19 +154,19 @@ export default function Workspace() {
     }
     return (
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <Card 
-          title="Formula Sheet" 
-          subtitle="Turn notes into a formula-only PDF" 
+        <Card
+          title="Formula Sheet"
+          subtitle="Turn notes into a formula-only PDF"
           onClick={() => focusInputWithPrompt("Generate a formula sheet (equations + definitions only).")}
         />
-        <Card 
-          title="Summary Notes" 
-          subtitle="Clean structured notes + definitions" 
+        <Card
+          title="Summary Notes"
+          subtitle="Clean structured notes + definitions"
           onClick={() => focusInputWithPrompt("Create a clean summary with sections and key definitions.")}
         />
-        <Card 
-          title="Flashcards" 
-          subtitle="Generate Q/A cards from notes" 
+        <Card
+          title="Flashcards"
+          subtitle="Generate Q/A cards from notes"
           onClick={() => focusInputWithPrompt("Generate flashcards (Q/A cards) from my notes.")}
         />
       </div>
@@ -851,7 +851,7 @@ export default function Workspace() {
                   Templates
                 </TabButton>
               </div>
-              <Link 
+              <Link
                 href={startTab === "templates" ? "/templates" : "/discover"}
                 className="text-sm text-white/70 hover:text-white"
               >
@@ -906,12 +906,25 @@ function Chip({ children, onClick }: { children: React.ReactNode; onClick: () =>
 
 function Card({ title, subtitle, onClick }: { title: string; subtitle: string; onClick?: () => void }) {
   return (
-    <div 
+    <div
       onClick={onClick}
       className="rounded-2xl border border-white/12 bg-white/8 p-4 hover:bg-white/12 cursor-pointer backdrop-blur transition-colors"
     >
       <div className="text-sm font-semibold text-white">{title}</div>
       <div className="mt-1 text-xs text-white/60">{subtitle}</div>
     </div>
+  );
+}
+
+// Wrapper component with Suspense boundary for useSearchParams()
+export default function Workspace() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center text-white/60">
+        Loading workspace...
+      </div>
+    }>
+      <WorkspaceContent />
+    </Suspense>
   );
 }
