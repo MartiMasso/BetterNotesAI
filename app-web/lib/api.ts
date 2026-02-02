@@ -21,38 +21,48 @@ export interface IncrementResult {
  * Get the current user's usage status
  */
 export async function getUsageStatus(): Promise<UsageStatus | null> {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return null;
 
-    const { data, error } = await supabase
-        .rpc('get_usage_status', { p_user_id: user.id })
-        .single();
+        const { data, error } = await supabase
+            .rpc('get_usage_status', { p_user_id: user.id })
+            .single();
 
-    if (error) {
-        console.error("Failed to get usage status:", error);
+        if (error) {
+            console.warn("Failed to get usage status:", error.message);
+            return null;
+        }
+
+        return data as UsageStatus;
+    } catch (e) {
+        console.warn("getUsageStatus error:", e);
         return null;
     }
-
-    return data as UsageStatus;
 }
 
 /**
  * Increment message count and check if limit reached
  */
 export async function incrementMessageCount(): Promise<IncrementResult | null> {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return null;
 
-    const { data, error } = await supabase
-        .rpc('increment_message_count', { p_user_id: user.id })
-        .single();
+        const { data, error } = await supabase
+            .rpc('increment_message_count', { p_user_id: user.id })
+            .single();
 
-    if (error) {
-        console.error("Failed to increment message count:", error);
+        if (error) {
+            console.warn("Failed to increment message count:", error.message);
+            return null;
+        }
+
+        return data as IncrementResult;
+    } catch (e) {
+        console.warn("incrementMessageCount error:", e);
         return null;
     }
-
-    return data as IncrementResult;
 }
 
 /**
@@ -64,27 +74,32 @@ export async function saveChat(chatData: {
     latex_content?: string;
     messages: Array<{ role: string; content: string }>;
 }): Promise<string | null> {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return null;
 
-    const { data, error } = await supabase
-        .from('chats')
-        .insert({
-            user_id: user.id,
-            title: chatData.title || 'Untitled',
-            template_id: chatData.template_id,
-            latex_content: chatData.latex_content,
-            messages: chatData.messages,
-        })
-        .select('id')
-        .single();
+        const { data, error } = await supabase
+            .from('chats')
+            .insert({
+                user_id: user.id,
+                title: chatData.title || 'Untitled',
+                template_id: chatData.template_id,
+                latex_content: chatData.latex_content,
+                messages: chatData.messages,
+            })
+            .select('id')
+            .single();
 
-    if (error) {
-        console.error("Failed to save chat:", error);
+        if (error) {
+            console.warn("Failed to save chat:", error.message);
+            return null;
+        }
+
+        return data.id;
+    } catch (e) {
+        console.warn("saveChat error:", e);
         return null;
     }
-
-    return data.id;
 }
 
 /**
@@ -95,20 +110,25 @@ export async function updateChat(chatId: string, chatData: {
     latex_content?: string;
     messages?: Array<{ role: string; content: string }>;
 }): Promise<boolean> {
-    const { error } = await supabase
-        .from('chats')
-        .update({
-            ...chatData,
-            updated_at: new Date().toISOString(),
-        })
-        .eq('id', chatId);
+    try {
+        const { error } = await supabase
+            .from('chats')
+            .update({
+                ...chatData,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', chatId);
 
-    if (error) {
-        console.error("Failed to update chat:", error);
+        if (error) {
+            console.warn("Failed to update chat:", error.message);
+            return false;
+        }
+
+        return true;
+    } catch (e) {
+        console.warn("updateChat error:", e);
         return false;
     }
-
-    return true;
 }
 
 /**
@@ -120,17 +140,22 @@ export async function loadChats(): Promise<Array<{
     created_at: string;
     updated_at: string;
 }>> {
-    const { data, error } = await supabase
-        .from('chats')
-        .select('id, title, created_at, updated_at')
-        .order('updated_at', { ascending: false });
+    try {
+        const { data, error } = await supabase
+            .from('chats')
+            .select('id, title, created_at, updated_at')
+            .order('updated_at', { ascending: false });
 
-    if (error) {
-        console.error("Failed to load chats:", error);
+        if (error) {
+            console.warn("Failed to load chats:", error.message);
+            return [];
+        }
+
+        return data || [];
+    } catch (e) {
+        console.warn("loadChats error:", e);
         return [];
     }
-
-    return data || [];
 }
 
 /**
@@ -143,33 +168,44 @@ export async function loadChat(chatId: string): Promise<{
     latex_content: string | null;
     messages: Array<{ role: string; content: string }>;
 } | null> {
-    const { data, error } = await supabase
-        .from('chats')
-        .select('*')
-        .eq('id', chatId)
-        .single();
+    try {
+        const { data, error } = await supabase
+            .from('chats')
+            .select('*')
+            .eq('id', chatId)
+            .single();
 
-    if (error) {
-        console.error("Failed to load chat:", error);
+        if (error) {
+            console.warn("Failed to load chat:", error.message);
+            return null;
+        }
+
+        return data;
+    } catch (e) {
+        console.warn("loadChat error:", e);
         return null;
     }
-
-    return data;
 }
 
 /**
  * Delete a chat
  */
 export async function deleteChat(chatId: string): Promise<boolean> {
-    const { error } = await supabase
-        .from('chats')
-        .delete()
-        .eq('id', chatId);
+    try {
+        const { error } = await supabase
+            .from('chats')
+            .delete()
+            .eq('id', chatId);
 
-    if (error) {
-        console.error("Failed to delete chat:", error);
+        if (error) {
+            console.warn("Failed to delete chat:", error.message);
+            return false;
+        }
+
+        return true;
+    } catch (e) {
+        console.warn("deleteChat error:", e);
         return false;
     }
-
-    return true;
 }
+
