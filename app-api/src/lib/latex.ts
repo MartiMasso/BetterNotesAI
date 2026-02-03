@@ -152,7 +152,7 @@ export async function compileLatexToPdf(
       try {
         const { stdout, stderr } = await execFileAsync(
           "latexmk",
-          ["-pdf", "-interaction=nonstopmode", "-halt-on-error", "-file-line-error", "main.tex"],
+          ["-pdf", "-bibtex-", "-interaction=nonstopmode", "-halt-on-error", "-file-line-error", "main.tex"],
           { cwd: workDir, timeout: opts.timeoutMs, maxBuffer: 20 * 1024 * 1024 }
         );
         log += stdout ?? "";
