@@ -10,6 +10,7 @@ type StripeDeps = {
   webhookSecret: string;
   stripeSecretKeyPresent: boolean;
   supabasePresent: boolean;
+  priceProId?: string;
 };
 
 function makeHttpError(message: string, statusCode: number) {
@@ -31,8 +32,22 @@ export function createStripeRouter(deps: StripeDeps) {
     try {
       assertStripeConfigured(deps);
 
-      const { priceId, userId, email } = req.body as { priceId?: string; userId?: string; email?: string };
+      const { priceId, userId, email, plan } = req.body as {
+        priceId?: string;
+        userId?: string;
+        email?: string;
+        plan?: string;
+      };
       if (!priceId || !userId) return res.status(400).json({ ok: false, error: "Missing priceId or userId." });
+
+      const planNormalized = plan === "pro" ? "pro" : null;
+      const resolvedPlan = planNormalized ?? (deps.priceProId && priceId === deps.priceProId ? "pro" : null);
+      if (!resolvedPlan) {
+        return res.status(400).json({ ok: false, error: "Only the Pro plan is available right now." });
+      }
+      if (deps.priceProId && priceId !== deps.priceProId) {
+        return res.status(400).json({ ok: false, error: "Invalid Pro priceId." });
+      }
 
       const { data: profile, error: pErr } = await deps.supabaseAdmin
         .from("profiles")
@@ -64,6 +79,12 @@ export function createStripeRouter(deps: StripeDeps) {
         customer: stripeCustomerId,
         line_items: [{ price: priceId, quantity: 1 }],
         allow_promotion_codes: true,
+        subscription_data: {
+          metadata: {
+            plan: resolvedPlan,
+            supabase_user_id: userId,
+          },
+        },
         success_url: `${deps.siteUrl}/pricing?success=1&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${deps.siteUrl}/pricing?canceled=1`,
       });
@@ -106,8 +127,8 @@ export function createStripeRouter(deps: StripeDeps) {
     }
   });
 
-  // POST /stripe/webhook  (raw body must be handled in server.ts)
-  router.post("/webhook", async (req, res) => {
+  // POST /stripe/webhook  (raw body required for signature verification)
+  router.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
     if (!deps.webhookSecret) return res.status(500).send("STRIPE_WEBHOOK_SECRET not set");
 
     const sig = req.headers["stripe-signature"];
@@ -154,6 +175,20 @@ export function createStripeRouter(deps: StripeDeps) {
             break;
           }
 
+          const planFromMeta = (sub.metadata as any)?.plan ?? null;
+          const priceIsPro = deps.priceProId ? priceId === deps.priceProId : null;
+          const resolvedPlan =
+            planFromMeta === "pro"
+              ? deps.priceProId
+                ? priceIsPro
+                  ? "pro"
+                  : null
+                : "pro"
+              : priceIsPro
+                ? "pro"
+                : null;
+          const shouldSetPro = resolvedPlan === "pro" && (status === "active" || status === "trialing");
+
           const { data: existing, error: exErr } = await deps.supabaseAdmin
             .from("subscriptions")
             .select("id")
@@ -187,7 +222,7 @@ export function createStripeRouter(deps: StripeDeps) {
             if (insErr) throw insErr;
           }
 
-          const { error: profUpErr } = await deps.supabaseAdmin.from("profiles").upsert({
+          const profileUpdate: Record<string, any> = {
             id: userId,
             stripe_customer_id: stripeCustomerId,
             stripe_subscription_id: stripeSubscriptionId,
@@ -195,7 +230,10 @@ export function createStripeRouter(deps: StripeDeps) {
             price_id: priceId,
             current_period_end: periodEndIso,
             updated_at: new Date().toISOString(),
-          });
+          };
+          if (shouldSetPro) profileUpdate.plan = "pro";
+
+          const { error: profUpErr } = await deps.supabaseAdmin.from("profiles").upsert(profileUpdate);
           if (profUpErr) throw profUpErr;
 
           break;

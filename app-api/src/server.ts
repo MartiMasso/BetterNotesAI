@@ -39,6 +39,7 @@ const allowedOrigins = allowedOriginsRaw
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY ?? "";
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET ?? "";
 const SITE_URL = process.env.SITE_URL ?? "http://localhost:3000";
+const STRIPE_PRICE_PRO_MONTHLY = process.env.STRIPE_PRICE_PRO_MONTHLY ?? "";
 
 if (!STRIPE_SECRET_KEY) {
   console.warn("[WARN] STRIPE_SECRET_KEY is not set. Stripe routes will fail.");
@@ -154,6 +155,7 @@ app.use(
     // useful if your stripe router asserts config:
     stripeSecretKeyPresent: Boolean(STRIPE_SECRET_KEY),
     supabasePresent: Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY),
+    priceProId: STRIPE_PRICE_PRO_MONTHLY || undefined,
   })
 );
 
