@@ -420,7 +420,7 @@ function WorkspaceContent() {
       if (files && files.length > 0) payload.files = files;
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
+      const timeoutId = setTimeout(() => controller.abort(), 180000);
 
       const r = await fetch(`${API_BASE_URL}/generate-latex`, {
         method: "POST",

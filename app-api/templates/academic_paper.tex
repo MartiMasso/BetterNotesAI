@@ -39,17 +39,17 @@
 
 % Theorem environments
 \theoremstyle{plain}
-\newtheorem{theorem}{Theorem}[section]
-\newtheorem{lemma}[theorem]{Lemma}
-\newtheorem{proposition}[theorem]{Proposition}
-\newtheorem{corollary}[theorem]{Corollary}
+\ifdefined\theorem \else \newtheorem{theorem}{Theorem}[section] \fi
+\ifdefined\lemma \else \newtheorem{lemma}[theorem]{Lemma} \fi
+\ifdefined\proposition \else \newtheorem{proposition}[theorem]{Proposition} \fi
+\ifdefined\corollary \else \newtheorem{corollary}[theorem]{Corollary} \fi
 
 \theoremstyle{definition}
-\newtheorem{definition}[theorem]{Definition}
-\newtheorem{example}[theorem]{Example}
+\ifdefined\definition \else \newtheorem{definition}[theorem]{Definition} \fi
+\ifdefined\example \else \newtheorem{example}[theorem]{Example} \fi
 
 \theoremstyle{remark}
-\newtheorem{remark}[theorem]{Remark}
+\ifdefined\remark \else \newtheorem{remark}[theorem]{Remark} \fi
 
 % Custom commands
 \newcommand{\avg}[1]{\langle #1 \rangle}

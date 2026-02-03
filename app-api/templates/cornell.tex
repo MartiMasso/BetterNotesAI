@@ -51,12 +51,37 @@
 \newtheoremstyle{cornellstyle}
 	{0pt}{3pt}{\upshape}{}{\bfseries}{}{ }{}
 \theoremstyle{cornellstyle}
-\newtheorem*{definition}{\textcolor{defgreen}{Def.}}
-\newtheorem*{proposition}{\textcolor{propblue}{Prop.}}
-\newtheorem*{theorem}{\textcolor{thmred}{Thm.}}
-\newtheorem*{corollary}{\textcolor{thmred}{Cor.}}
-\newtheorem*{example}{\textcolor{sectiongreen}{Ex.}}
-\newtheorem*{remark}{\textcolor{cueblue}{Rmk.}}
+
+\ifdefined\definition
+  % definition already defined (likely by AI preamble), skip to avoid crash
+\else
+  \newtheorem*{definition}{\textcolor{defgreen}{Def.}}
+\fi
+
+\ifdefined\proposition
+\else
+  \newtheorem*{proposition}{\textcolor{propblue}{Prop.}}
+\fi
+
+\ifdefined\theorem
+\else
+  \newtheorem*{theorem}{\textcolor{thmred}{Thm.}}
+\fi
+
+\ifdefined\corollary
+\else
+  \newtheorem*{corollary}{\textcolor{thmred}{Cor.}}
+\fi
+
+\ifdefined\example
+\else
+  \newtheorem*{example}{\textcolor{sectiongreen}{Ex.}}
+\fi
+
+\ifdefined\remark
+\else
+  \newtheorem*{remark}{\textcolor{cueblue}{Rmk.}}
+\fi
 
 % Summary box at bottom
 \newcommand{\summary}[1]{

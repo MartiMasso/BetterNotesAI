@@ -28,7 +28,7 @@ const TEMPLATE_DIR = process.env.TEMPLATE_DIR
   : path.join(process.cwd(), "templates"); // app-api/templates
 
 const MAX_JSON_SIZE = process.env.MAX_JSON_SIZE ?? "6mb";
-const LATEX_TIMEOUT_MS = Number(process.env.LATEX_TIMEOUT_MS ?? 60000);
+const LATEX_TIMEOUT_MS = Number(process.env.LATEX_TIMEOUT_MS ?? 180000);
 
 const allowedOriginsRaw = (process.env.ALLOWED_ORIGINS ?? "").trim();
 const allowedOrigins = allowedOriginsRaw
@@ -61,9 +61,9 @@ const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
 const stripe = STRIPE_SECRET_KEY
   ? new Stripe(STRIPE_SECRET_KEY, {
-      // If this apiVersion causes issues, remove this line.
-      // apiVersion: "2025-01-27.acacia",
-    })
+    // If this apiVersion causes issues, remove this line.
+    // apiVersion: "2025-01-27.acacia",
+  })
   : (null as any as Stripe);
 
 const supabaseAdmin =

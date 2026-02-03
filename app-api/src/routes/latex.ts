@@ -78,12 +78,17 @@ export function createLatexRouter(deps: LatexDeps) {
     const system = [
       "You are BetterNotes AI, an expert academic assistant FOCUSED on generating LaTeX documents.",
       "Your goal is ALWAYS to help the user create or refine a LaTeX document.",
-      "- If the user sends a greeting or generic message (e.g., 'Hi'), reply politely but IMMEDIATELY ask about the document they want to create.",
-      "- Do NOT engage in prolonged general chit-chat.",
+      "- If the user provides a topic, subject, or request (e.g., 'History of Spain', 'Formula sheet'), use the available TEMPLATE to GENERATE the document IMMEDIATELY.",
+      "- Do NOT ask for more details ('what kind of document?'). The template IS the kind of document.",
+      "- Only ask for clarification if the request is completely empty or nonsensical.",
+      "- If the user says 'give me the latex' or 'use selected template', generate it based on previous context or a generic example if context is missing.",
       "- If output is a document, it MUST be valid LaTeX.",
       "- Use standard packages. Avoid exotic ones.",
       "- Never output triple backticks (```).",
       "CRITICAL: Do NOT use environments like 'example', 'theorem', 'proof' unless defined in the template. Use \\textbf{Example:} or \\section*{Example} instead.",
+      "CRITICAL: If the template ALREADY defines 'definition', 'theorem', or 'example' (look for \\newtheorem), USE THEM. Do NOT re-define them (no \\newtheorem{definition}).",
+      "CRITICAL: If the template uses `tcolorbox`, `tikz` or specific colors, PRESERVE THEM. Do not replace them with standard LaTeX.",
+      "CRITICAL: Use \\verify{...} instead of \\check{...} for solution verification steps.",
     ].join(" ");
 
     const messages: { role: "system" | "assistant" | "user"; content: any }[] = [{ role: "system", content: system }];
@@ -97,7 +102,8 @@ export function createLatexRouter(deps: LatexDeps) {
       textPrompt = [
         `We will insert your output into a LaTeX template (templateId="${templateId}").`,
         "Return ONLY the body/content to be inserted at the placeholder.",
-        "IMPORTANT: If the user request is generic, generate REALISTIC DUMMY CONTENT.",
+        "IMPORTANT: The user wants a document about: '${prompt}'. GENERATE IT NOW.",
+        "Generate REALISTIC, HIGH-QUALITY CONTENT for this topic.",
         "",
         "=== TEMPLATE (style ref) ===",
         templateSource,
@@ -109,6 +115,7 @@ export function createLatexRouter(deps: LatexDeps) {
       textPrompt = [
         `Create a complete LaTeX document based on templateId="${templateId}".`,
         "Ensure the final output is a complete compilable .tex file.",
+        "The user wants a document about: '${prompt}'. GENERATE IT NOW.",
         "",
         "=== TEMPLATE ===",
         templateSource,
@@ -116,7 +123,8 @@ export function createLatexRouter(deps: LatexDeps) {
         "=== USER REQUEST ===",
         prompt,
         "",
-        "If the user is NOT asking for a document and just chatting, reply with a PLAIN TEXT message asking for document details.",
+        "If the user is NOT asking for a document and just chatting (e.g. 'hi'), reply with a polite text message.",
+        "BUT if the user implies a document (e.g. 'history', 'physics', 'make it'), GENERATE THE LATEX.",
       ].join("\n");
     }
 
@@ -173,6 +181,7 @@ export function createLatexRouter(deps: LatexDeps) {
       "Make the smallest changes necessary.",
       "Never output triple backticks.",
       "CRITICAL: If the error is 'Environment ... undefined', REPLACE that environment with a standard one (like 'itemize' or just \\textbf{Title}) or remove it. Do not try to define new environments in the body.",
+      "CRITICAL: If the error is 'Command ... already defined', REMOVE the re-definition (e.g. \\newcommand, \\newtheorem) that caused it.",
     ].join(" ");
 
     const user = [
