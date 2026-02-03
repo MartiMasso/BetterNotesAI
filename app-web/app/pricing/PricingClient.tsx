@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import AppBackground from "../components/AppBackground";
+import Navbar from "../components/Navbar";
 import * as supabaseMod from "../../supabaseClient";
 
 const supabase: any = (supabaseMod as any).supabase ?? (supabaseMod as any).default;
@@ -65,40 +66,7 @@ export default function PricingClient({ success, canceled }: { success: boolean;
   return (
     <main className="relative min-h-screen text-white">
       <AppBackground />
-
-      {/* Top bar */}
-      <header className="mx-auto max-w-6xl px-4 py-5 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="h-9 w-9 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center font-semibold">
-            B
-          </div>
-          <div className="font-semibold tracking-tight">BetterNotes</div>
-        </Link>
-
-        <nav className="hidden md:flex items-center gap-6 text-sm text-white/70">
-          <Link className="hover:text-white" href="/discover">
-            Discover
-          </Link>
-          <Link className="hover:text-white" href="/workspace">
-            Workspace
-          </Link>
-        </nav>
-
-        <div className="flex items-center gap-2">
-          <Link
-            href="/workspace"
-            className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm hover:bg-white/15 backdrop-blur"
-          >
-            Log in
-          </Link>
-          <Link
-            href="/workspace"
-            className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-neutral-950 hover:bg-white/90"
-          >
-            Get started
-          </Link>
-        </div>
-      </header>
+      <Navbar />
 
       {/* Content */}
       <section className="mx-auto max-w-6xl px-4 pt-10 pb-16">

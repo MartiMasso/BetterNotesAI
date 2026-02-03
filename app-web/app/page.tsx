@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Background from "./components/Background";
+import PdfPreviewModal from "./components/PdfPreviewModal";
 import { supabase } from "@/supabaseClient";
+import { templates } from "@/lib/templates";
 import type { User } from "@supabase/supabase-js";
 
 export default function Home() {
@@ -13,6 +16,7 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [previewTemplate, setPreviewTemplate] = useState<typeof templates[number] | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -74,9 +78,6 @@ export default function Home() {
         <nav className="hidden md:flex items-center gap-6 text-sm text-white/70">
           <Link className="hover:text-white" href="/workspace">
             Workspace
-          </Link>
-          <Link className="hover:text-white" href="/discover">
-            Discover
           </Link>
           <Link className="hover:text-white" href="/templates">
             Templates
@@ -174,13 +175,6 @@ export default function Home() {
             Workspace
           </Link>
           <Link
-            href="/discover"
-            onClick={() => setMobileNavOpen(false)}
-            className="block rounded-xl px-3 py-2 text-sm text-white/85 hover:bg-white/10"
-          >
-            Discover
-          </Link>
-          <Link
             href="/templates"
             onClick={() => setMobileNavOpen(false)}
             className="block rounded-xl px-3 py-2 text-sm text-white/85 hover:bg-white/10"
@@ -272,24 +266,34 @@ export default function Home() {
       <section id="templates" className="relative z-10 mx-auto max-w-6xl px-4 pb-16 pt-6">
         <div className="flex items-end justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-white">Discover templates</h2>
+            <h2 className="text-xl font-semibold text-white">Templates</h2>
             <p className="text-sm text-white/65">Start your next project with a template</p>
           </div>
-          <Link href="/discover" className="text-sm text-white/70 hover:text-white">
+          <Link href="/templates" className="text-sm text-white/70 hover:text-white">
             View all →
           </Link>
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <TemplateCard title="Formula Sheet" subtitle="Equations + definitions only" emoji="∑" />
-          <TemplateCard title="Summary Notes" subtitle="Structured notes with clean sections" emoji="✦" />
-          <TemplateCard title="Flashcards" subtitle="Turn notes into Q/A cards" emoji="⌁" />
+          {templates.filter(t => !t.isPro).slice(0, 3).map((t) => (
+            <TemplateCard key={t.id} template={t} onPreview={() => setPreviewTemplate(t)} />
+          ))}
         </div>
       </section>
 
       <footer className="relative z-10 mx-auto max-w-6xl px-4 pb-10 text-center text-xs text-white/50">
         © {new Date().getFullYear()} BetterNotes — MVP
       </footer>
+
+      <PdfPreviewModal
+        isOpen={previewTemplate !== null}
+        onClose={() => setPreviewTemplate(null)}
+        pdfUrl={(previewTemplate as any)?.previewPath ?? previewTemplate?.publicPath ?? ""}
+        title={previewTemplate?.name ?? ""}
+        templateId={previewTemplate?.id}
+        isPro={previewTemplate?.isPro ?? false}
+        userIsPro={false}
+      />
     </main>
   );
 }
@@ -305,20 +309,52 @@ function Chip({ children, onClick }: { children: React.ReactNode; onClick: () =>
   );
 }
 
-function TemplateCard({ title, subtitle, emoji }: { title: string; subtitle: string; emoji: string }) {
+function TemplateCard({ template, onPreview }: { template: typeof templates[number]; onPreview?: () => void }) {
+  function handlePreview(event: React.MouseEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (onPreview) onPreview();
+  }
+
   return (
     <Link
-      href="/discover"
-      className="block rounded-2xl border border-white/20 bg-white/10 p-4 hover:bg-white/15 backdrop-blur shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_20px_60px_rgba(0,0,0,0.35)]"
+      href={`/workspace?template=${template.id}`}
+      className="group block rounded-2xl border border-white/20 bg-white/10 p-4 hover:bg-white/15 backdrop-blur shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_20px_60px_rgba(0,0,0,0.35)] relative overflow-hidden"
     >
-      <div className="flex items-start justify-between">
-        <div className="text-sm font-semibold text-white">{title}</div>
-        <div className="h-9 w-9 rounded-xl bg-white/15 border border-white/20 text-white flex items-center justify-center text-sm">
-          {emoji}
-        </div>
+      <div className="relative w-full aspect-[4/3] overflow-hidden rounded-xl bg-white/5 border border-white/10 mb-3">
+        {template.thumbnailPath ? (
+          <Image
+            src={template.thumbnailPath}
+            alt={template.name}
+            fill
+            className="object-cover group-hover:scale-105 transition-transform duration-300"
+            sizes="(max-width: 768px) 100vw, 33vw"
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center text-sm text-white/50">
+            No preview
+          </div>
+        )}
       </div>
-      <div className="mt-2 text-xs text-white/65">{subtitle}</div>
-      <div className="mt-4 text-xs text-white/60">Use template →</div>
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-sm font-semibold text-white">{template.name}</div>
+          <div className="mt-1 text-xs text-white/65 line-clamp-1">{template.description}</div>
+        </div>
+        {onPreview && (
+          <button
+            type="button"
+            onClick={handlePreview}
+            className="rounded-lg p-2 border border-white/15 bg-white/5 hover:bg-white/15 transition-colors"
+            title="Preview template"
+          >
+            <svg className="w-4 h-4 text-white/70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.64 0 8.577 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.64 0-8.577-3.007-9.963-7.178z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+        )}
+      </div>
     </Link>
   );
 }

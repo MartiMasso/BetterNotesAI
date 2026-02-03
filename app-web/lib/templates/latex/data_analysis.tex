@@ -1,0 +1,601 @@
+\documentclass[11pt]{article}
+
+% =============================================================================
+% DATA ANALYSIS REPORT TEMPLATE - PRO
+% For: Bioinformaticians, Data Scientists, Statisticians, ML Researchers
+% Style: Technical report with statistical rigor
+% =============================================================================
+
+\usepackage[english]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+
+% Page geometry
+\usepackage{geometry}
+\geometry{a4paper, left=25mm, right=25mm, top=25mm, bottom=25mm}
+
+% Mathematics
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{bm}
+
+% Graphics and tables
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{caption}
+\captionsetup{font=small, labelfont=bf}
+
+% Colors
+\usepackage{xcolor}
+\definecolor{codebg}{RGB}{248,248,248}
+\definecolor{codeframe}{RGB}{200,200,200}
+\definecolor{significant}{RGB}{180,0,0}
+\definecolor{headerblue}{RGB}{0,51,102}
+
+% Code listings
+\usepackage{listings}
+\lstdefinestyle{python}{
+    language=Python,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue!70!black},
+    stringstyle=\color{red!60!black},
+    commentstyle=\color{green!50!black}\itshape,
+    backgroundcolor=\color{codebg},
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{codeframe},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    breaklines=true,
+    showstringspaces=false,
+    tabsize=4,
+    xleftmargin=2em,
+    framexleftmargin=1.5em
+}
+\lstdefinestyle{R}{
+    language=R,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue!70!black},
+    stringstyle=\color{red!60!black},
+    commentstyle=\color{green!50!black}\itshape,
+    backgroundcolor=\color{codebg},
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{codeframe},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    breaklines=true,
+    showstringspaces=false,
+    tabsize=4,
+    xleftmargin=2em,
+    framexleftmargin=1.5em
+}
+
+% Links
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=headerblue, citecolor=headerblue, urlcolor=blue}
+
+% Section formatting
+\usepackage{titlesec}
+\titleformat{\section}{\large\bfseries\color{headerblue}}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.5em}{}
+\titleformat{\subsubsection}{\normalsize\itshape}{\thesubsubsection}{0.5em}{}
+
+% Header/footer
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\textit{Gene Expression Analysis}}
+\fancyhead[R]{\small\textit{Data Analysis Report}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% Custom environments
+\usepackage{tcolorbox}
+\tcbuselibrary{breakable,skins}
+
+% Dataset summary box
+\newtcolorbox{datasummary}[1][]{
+    colback=blue!5,
+    colframe=blue!50!black,
+    fonttitle=\bfseries,
+    title=Dataset Summary,
+    #1
+}
+
+% Key finding box
+\newtcolorbox{keyfinding}[1][]{
+    colback=green!5,
+    colframe=green!50!black,
+    fonttitle=\bfseries,
+    title=Key Finding,
+    #1
+}
+
+% Warning/limitation box
+\newtcolorbox{limitation}[1][]{
+    colback=orange!5,
+    colframe=orange!50!black,
+    fonttitle=\bfseries,
+    title=Limitation,
+    #1
+}
+
+% Statistical significance notation
+\newcommand{\pval}[1]{\textit{p} = #1}
+\newcommand{\pless}[1]{\textit{p} < #1}
+\newcommand{\signif}{\textcolor{significant}{*}}
+\newcommand{\signifb}{\textcolor{significant}{**}}
+\newcommand{\signifc}{\textcolor{significant}{***}}
+
+% Effect size notation
+\newcommand{\cohend}{Cohen's \textit{d}}
+\newcommand{\etasq}{\eta^2}
+\newcommand{\rsq}{R^2}
+
+\begin{document}
+
+% =============================================================================
+% TITLE PAGE
+% =============================================================================
+\begin{titlepage}
+\centering
+
+\vspace*{1.5cm}
+
+{\Large\textsc{Computational Biology Group}}\\[0.3cm]
+{\large\textsc{Institute for Biomedical Research}}\\[2cm]
+
+\rule{\linewidth}{0.5pt}\\[0.4cm]
+{\LARGE\bfseries Differential Gene Expression Analysis\\[0.2cm] in Breast Cancer Subtypes}\\[0.3cm]
+\rule{\linewidth}{0.5pt}\\[1.5cm]
+
+{\large\textbf{Technical Report}}\\[0.3cm]
+{\large Project ID: TCGA-BRCA-2024-001}\\[1cm]
+
+\vfill
+
+\begin{tabular}{rl}
+\textbf{Lead Analyst:} & Dr. Jane Doe \\[0.2cm]
+\textbf{Collaborators:} & Dr. John Smith, Dr. Alice Johnson \\[0.2cm]
+\textbf{Analysis Date:} & January 15, 2024 \\[0.2cm]
+\textbf{Data Source:} & TCGA (The Cancer Genome Atlas) \\[0.2cm]
+\textbf{Pipeline Version:} & v2.3.1 \\
+\end{tabular}
+
+\vfill
+
+{\small
+\textbf{Software:} R 4.3.2, DESeq2 1.40.0, clusterProfiler 4.8.0\\
+\textbf{Repository:} \url{https://github.com/example/brca-analysis}
+}
+
+\end{titlepage}
+
+% =============================================================================
+% EXECUTIVE SUMMARY
+% =============================================================================
+\section*{Executive Summary}
+\addcontentsline{toc}{section}{Executive Summary}
+
+This report presents a comprehensive differential gene expression analysis comparing four molecular subtypes of breast cancer (Luminal A, Luminal B, HER2-enriched, and Basal-like) using RNA-seq data from the TCGA-BRCA cohort.
+
+\begin{keyfinding}
+\begin{itemize}
+    \item \textbf{2,847 differentially expressed genes} identified (adj. $p < 0.01$, $|\log_2\text{FC}| > 1$)
+    \item \textbf{ESR1} and \textbf{ERBB2} expression patterns strongly associate with clinical subtypes ($\rsq = 0.78$)
+    \item \textbf{Basal-like tumors} show enrichment for cell cycle and DNA repair pathways (FDR $< 10^{-15}$)
+    \item \textbf{Machine learning classifier} achieves 94.2\% accuracy (5-fold CV) distinguishing subtypes
+\end{itemize}
+\end{keyfinding}
+
+\tableofcontents
+\newpage
+
+% =============================================================================
+% 1. INTRODUCTION
+% =============================================================================
+\section{Introduction}
+
+\subsection{Background}
+
+Breast cancer is a heterogeneous disease with distinct molecular subtypes defined by gene expression profiles~\cite{perou2000,sorlie2001}. The PAM50 classifier identifies four intrinsic subtypes based on 50 genes:
+
+\begin{enumerate}
+    \item \textbf{Luminal A}: ER+/HER2-, low proliferation, best prognosis
+    \item \textbf{Luminal B}: ER+/HER2- or ER+/HER2+, high proliferation
+    \item \textbf{HER2-enriched}: HER2+, ER-/PR-
+    \item \textbf{Basal-like}: ER-/PR-/HER2-, worst prognosis
+\end{enumerate}
+
+Understanding the transcriptomic differences between subtypes is essential for developing targeted therapies and prognostic biomarkers.
+
+\subsection{Objectives}
+
+\begin{enumerate}
+    \item Identify differentially expressed genes (DEGs) between breast cancer subtypes
+    \item Perform pathway enrichment analysis to characterize biological processes
+    \item Develop a predictive model for subtype classification
+    \item Validate findings against independent datasets
+\end{enumerate}
+
+\subsection{Data Source}
+
+\begin{datasummary}
+\begin{tabular}{@{}ll@{}}
+\textbf{Project:} & TCGA-BRCA (Breast Invasive Carcinoma) \\
+\textbf{Samples:} & $n = 1,097$ primary tumors \\
+\textbf{Platform:} & Illumina HiSeq RNA-seq \\
+\textbf{Normalization:} & FPKM $\rightarrow$ TPM \\
+\textbf{Genes:} & 20,531 protein-coding genes \\
+\textbf{Clinical data:} & Age, stage, subtype, survival \\
+\end{tabular}
+\end{datasummary}
+
+% =============================================================================
+% 2. METHODS
+% =============================================================================
+\section{Methods}
+
+\subsection{Data Preprocessing}
+
+Raw RNA-seq counts were obtained from the GDC Data Portal. Preprocessing steps included:
+
+\begin{lstlisting}[style=R, caption={Data preprocessing pipeline in R}]
+library(DESeq2)
+library(edgeR)
+
+# Load count matrix and metadata
+counts <- read.csv("TCGA_BRCA_counts.csv", row.names=1)
+metadata <- read.csv("TCGA_BRCA_clinical.csv")
+
+# Filter low-expression genes (CPM > 1 in at least 10% of samples)
+keep <- rowSums(cpm(counts) > 1) >= 0.1 * ncol(counts)
+counts_filtered <- counts[keep, ]
+# Retained: 15,847 genes
+
+# Create DESeq2 object
+dds <- DESeqDataSetFromMatrix(
+    countData = counts_filtered,
+    colData = metadata,
+    design = ~ subtype
+)
+
+# Variance stabilizing transformation for visualization
+vsd <- vst(dds, blind = FALSE)
+\end{lstlisting}
+
+\subsection{Differential Expression Analysis}
+
+Pairwise comparisons between subtypes were performed using DESeq2 with the following thresholds:
+\begin{itemize}
+    \item Adjusted $p$-value (Benjamini-Hochberg FDR) $< 0.01$
+    \item $|\log_2\text{fold change}| > 1.0$
+\end{itemize}
+
+The statistical model accounts for the negative binomial distribution of count data:
+\begin{equation}
+    K_{ij} \sim \text{NB}(\mu_{ij}, \alpha_i),
+\end{equation}
+where $K_{ij}$ is the count for gene $i$ in sample $j$, $\mu_{ij}$ is the expected value, and $\alpha_i$ is the dispersion parameter.
+
+\subsection{Pathway Enrichment Analysis}
+
+Gene Ontology (GO) and KEGG pathway enrichment were performed using clusterProfiler~\cite{yu2012}:
+
+\begin{lstlisting}[style=R, caption={Pathway enrichment analysis}]
+library(clusterProfiler)
+library(org.Hs.eg.db)
+
+# Convert gene symbols to Entrez IDs
+gene_list <- bitr(DEGs$gene_symbol, 
+                  fromType = "SYMBOL",
+                  toType = "ENTREZID",
+                  OrgDb = org.Hs.eg.db)
+
+# GO Biological Process enrichment
+go_bp <- enrichGO(gene = gene_list$ENTREZID,
+                  OrgDb = org.Hs.eg.db,
+                  ont = "BP",
+                  pAdjustMethod = "BH",
+                  pvalueCutoff = 0.05,
+                  qvalueCutoff = 0.05)
+
+# KEGG pathway enrichment
+kegg <- enrichKEGG(gene = gene_list$ENTREZID,
+                   organism = 'hsa',
+                   pvalueCutoff = 0.05)
+\end{lstlisting}
+
+\subsection{Machine Learning Classification}
+
+A random forest classifier was trained to predict subtype from gene expression:
+\begin{itemize}
+    \item \textbf{Features:} Top 500 DEGs (by variance)
+    \item \textbf{Model:} Random Forest (500 trees, mtry = 22)
+    \item \textbf{Validation:} Stratified 5-fold cross-validation
+    \item \textbf{Metrics:} Accuracy, precision, recall, F1-score
+\end{itemize}
+
+% =============================================================================
+% 3. RESULTS
+% =============================================================================
+\section{Results}
+
+\subsection{Sample Distribution}
+
+Table~\ref{tab:sample_distribution} shows the distribution of samples across subtypes and clinical stages.
+
+\begin{table}[htbp]
+\centering
+\caption{Sample distribution by molecular subtype and tumor stage.}
+\label{tab:sample_distribution}
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+& \multicolumn{4}{c}{\textbf{Stage}} & \\
+\cmidrule(lr){2-5}
+\textbf{Subtype} & I & II & III & IV & \textbf{Total} \\
+\midrule
+Luminal A & 98 & 187 & 72 & 8 & 365 (33.3\%) \\
+Luminal B & 61 & 124 & 58 & 5 & 248 (22.6\%) \\
+HER2-enriched & 29 & 68 & 41 & 3 & 141 (12.9\%) \\
+Basal-like & 37 & 89 & 55 & 7 & 188 (17.1\%) \\
+Normal-like & 23 & 41 & 27 & 4 & 95 (8.7\%) \\
+Unclassified & 18 & 29 & 11 & 2 & 60 (5.5\%) \\
+\midrule
+\textbf{Total} & 266 & 538 & 264 & 29 & \textbf{1,097} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Differential Expression Results}
+
+A total of \textbf{2,847 differentially expressed genes} were identified in at least one pairwise comparison (adj. $p < 0.01$, $|\log_2\text{FC}| > 1$).
+
+\begin{table}[htbp]
+\centering
+\caption{Number of differentially expressed genes in pairwise subtype comparisons.}
+\label{tab:deg_counts}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Comparison} & \textbf{Up} & \textbf{Down} & \textbf{Total} \\
+\midrule
+Basal vs. Luminal A & 1,284 & 967 & 2,251 \\
+Basal vs. Luminal B & 1,031 & 742 & 1,773 \\
+Basal vs. HER2 & 687 & 412 & 1,099 \\
+HER2 vs. Luminal A & 534 & 398 & 932 \\
+HER2 vs. Luminal B & 321 & 287 & 608 \\
+Luminal B vs. Luminal A & 187 & 154 & 341 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Top Differentially Expressed Genes}
+
+Table~\ref{tab:top_genes} lists the top 15 genes ranked by adjusted $p$-value across all comparisons.
+
+\begin{table}[htbp]
+\centering
+\caption{Top 15 differentially expressed genes (Basal vs. Luminal A comparison).}
+\label{tab:top_genes}
+\begin{tabular}{@{}llrrrl@{}}
+\toprule
+\textbf{Gene} & \textbf{Description} & \textbf{log$_2$FC} & \textbf{SE} & \textbf{adj. \textit{p}} & \textbf{Sig.} \\
+\midrule
+ESR1 & Estrogen receptor 1 & $-4.82$ & 0.18 & $<10^{-100}$ & \signifc \\
+GATA3 & GATA binding protein 3 & $-3.94$ & 0.15 & $<10^{-95}$ & \signifc \\
+FOXA1 & Forkhead box A1 & $-3.67$ & 0.14 & $<10^{-87}$ & \signifc \\
+KRT5 & Keratin 5 & $+4.21$ & 0.19 & $<10^{-78}$ & \signifc \\
+KRT14 & Keratin 14 & $+3.89$ & 0.17 & $<10^{-72}$ & \signifc \\
+FOXC1 & Forkhead box C1 & $+3.54$ & 0.16 & $<10^{-65}$ & \signifc \\
+MKI67 & Marker of proliferation Ki-67 & $+2.87$ & 0.12 & $<10^{-58}$ & \signifc \\
+ERBB2 & HER2/neu receptor & $+0.42$ & 0.08 & $3.2 \times 10^{-7}$ & \signifc \\
+PGR & Progesterone receptor & $-3.21$ & 0.14 & $<10^{-55}$ & \signifc \\
+CDH1 & E-cadherin & $-1.54$ & 0.09 & $<10^{-42}$ & \signifc \\
+CCNB1 & Cyclin B1 & $+2.34$ & 0.11 & $<10^{-40}$ & \signifc \\
+TOP2A & Topoisomerase II alpha & $+2.67$ & 0.12 & $<10^{-38}$ & \signifc \\
+BRCA1 & BRCA1 DNA repair & $+1.12$ & 0.07 & $<10^{-28}$ & \signifc \\
+TP53 & Tumor protein p53 & $+0.87$ & 0.06 & $<10^{-22}$ & \signifc \\
+MYC & MYC proto-oncogene & $+1.34$ & 0.08 & $<10^{-19}$ & \signifc \\
+\bottomrule
+\end{tabular}
+\begin{flushleft}
+\small\signifc~adj. $p < 0.001$; \signifb~adj. $p < 0.01$; \signif~adj. $p < 0.05$
+\end{flushleft}
+\end{table}
+
+\subsection{Pathway Enrichment}
+
+\subsubsection{Basal-like Enriched Pathways}
+
+Genes upregulated in Basal-like tumors were significantly enriched in:
+
+\begin{table}[htbp]
+\centering
+\caption{Top GO Biological Process terms enriched in Basal-like tumors.}
+\label{tab:go_basal}
+\begin{tabular}{@{}lcccr@{}}
+\toprule
+\textbf{GO Term} & \textbf{Genes} & \textbf{Fold Enrich.} & \textbf{FDR} \\
+\midrule
+Cell cycle (GO:0007049) & 187 & 3.4 & $<10^{-45}$ \\
+DNA replication (GO:0006260) & 89 & 4.2 & $<10^{-32}$ \\
+Mitotic nuclear division (GO:0140014) & 124 & 3.8 & $<10^{-28}$ \\
+DNA repair (GO:0006281) & 112 & 2.9 & $<10^{-21}$ \\
+Chromosome segregation (GO:0007059) & 67 & 4.1 & $<10^{-18}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{KEGG Pathway Analysis}
+
+\begin{table}[htbp]
+\centering
+\caption{Significantly enriched KEGG pathways.}
+\label{tab:kegg}
+\begin{tabular}{@{}lllcr@{}}
+\toprule
+\textbf{Pathway ID} & \textbf{Pathway Name} & \textbf{Category} & \textbf{Genes} & \textbf{FDR} \\
+\midrule
+hsa04110 & Cell cycle & Cell growth & 78 & $<10^{-25}$ \\
+hsa03030 & DNA replication & Replication & 34 & $<10^{-18}$ \\
+hsa04115 & p53 signaling pathway & Signal trans. & 45 & $<10^{-12}$ \\
+hsa03440 & Homologous recombination & Repair & 28 & $<10^{-10}$ \\
+hsa04512 & ECM-receptor interaction & Adhesion & 52 & $<10^{-8}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Classification Performance}
+
+The random forest classifier achieved excellent performance in distinguishing subtypes:
+
+\begin{table}[htbp]
+\centering
+\caption{Classification performance metrics (5-fold cross-validation).}
+\label{tab:ml_performance}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Subtype} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} & \textbf{Support} \\
+\midrule
+Luminal A & 0.96 & 0.94 & 0.95 & 365 \\
+Luminal B & 0.89 & 0.91 & 0.90 & 248 \\
+HER2-enriched & 0.92 & 0.88 & 0.90 & 141 \\
+Basal-like & 0.98 & 0.99 & 0.98 & 188 \\
+\midrule
+\textbf{Macro avg} & 0.94 & 0.93 & 0.93 & 942 \\
+\textbf{Weighted avg} & 0.94 & 0.94 & 0.94 & 942 \\
+\midrule
+\multicolumn{4}{l}{\textbf{Overall Accuracy:}} & \textbf{94.2\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The top 10 most important features (by Gini importance) were: ESR1, GATA3, FOXA1, KRT5, KRT14, MKI67, FOXC1, PGR, CDH1, and ERBB2.
+
+% =============================================================================
+% 4. DISCUSSION
+% =============================================================================
+\section{Discussion}
+
+\subsection{Biological Interpretation}
+
+The differential expression results are consistent with known biology of breast cancer subtypes:
+
+\begin{itemize}
+    \item \textbf{Luminal tumors:} High expression of ESR1, GATA3, FOXA1 reflects estrogen receptor signaling dependency.
+    
+    \item \textbf{Basal-like tumors:} Upregulation of basal keratins (KRT5, KRT14) and proliferation markers (MKI67) aligns with their aggressive phenotype.
+    
+    \item \textbf{HER2-enriched:} ERBB2 amplification drives the distinct expression pattern.
+\end{itemize}
+
+The enrichment of cell cycle and DNA repair pathways in Basal-like tumors explains their sensitivity to platinum chemotherapy and PARP inhibitors.
+
+\subsection{Clinical Implications}
+
+\begin{keyfinding}
+The gene signature identified here could serve as:
+\begin{enumerate}
+    \item A diagnostic tool for subtype classification
+    \item Prognostic markers for survival prediction
+    \item Targets for subtype-specific therapies
+\end{enumerate}
+\end{keyfinding}
+
+\subsection{Limitations}
+
+\begin{limitation}
+\begin{itemize}
+    \item \textbf{Batch effects:} TCGA data was collected across multiple centers; while we applied batch correction, residual effects may persist.
+    
+    \item \textbf{Tumor heterogeneity:} Bulk RNA-seq averages expression across cell types; single-cell analysis would provide higher resolution.
+    
+    \item \textbf{External validation:} Results should be validated in independent cohorts (e.g., METABRIC, GSE96058).
+\end{itemize}
+\end{limitation}
+
+% =============================================================================
+% 5. CONCLUSIONS
+% =============================================================================
+\section{Conclusions}
+
+\begin{enumerate}
+    \item We identified 2,847 differentially expressed genes distinguishing breast cancer subtypes.
+    
+    \item Basal-like tumors show strong enrichment for cell cycle and DNA repair pathways.
+    
+    \item A machine learning classifier achieves 94.2\% accuracy in subtype prediction.
+    
+    \item ESR1, GATA3, and FOXA1 are the strongest discriminators of luminal vs. non-luminal subtypes.
+\end{enumerate}
+
+\subsection{Future Directions}
+
+\begin{itemize}
+    \item Integration with proteomics and metabolomics data
+    \item Single-cell RNA-seq analysis for tumor microenvironment characterization
+    \item Survival analysis incorporating the identified gene signature
+\end{itemize}
+
+% =============================================================================
+% REFERENCES
+% =============================================================================
+\begin{thebibliography}{9}
+
+\bibitem{perou2000}
+C. M. Perou et al., ``Molecular portraits of human breast tumours,'' \textit{Nature} \textbf{406}, 747--752 (2000).
+
+\bibitem{sorlie2001}
+T. Sørlie et al., ``Gene expression patterns of breast carcinomas distinguish tumor subclasses with clinical implications,'' \textit{PNAS} \textbf{98}, 10869--10874 (2001).
+
+\bibitem{love2014}
+M. I. Love, W. Huber, and S. Anders, ``Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2,'' \textit{Genome Biology} \textbf{15}, 550 (2014).
+
+\bibitem{yu2012}
+G. Yu et al., ``clusterProfiler: an R package for comparing biological themes among gene clusters,'' \textit{OMICS} \textbf{16}, 284--287 (2012).
+
+\bibitem{koboldt2012}
+D. C. Koboldt et al., ``Comprehensive molecular portraits of human breast tumours,'' \textit{Nature} \textbf{490}, 61--70 (2012) [TCGA].
+
+\end{thebibliography}
+
+% =============================================================================
+% APPENDIX
+% =============================================================================
+\appendix
+\section{Supplementary Tables}
+
+Full gene lists and pathway enrichment results are available at:
+\begin{center}
+\url{https://github.com/example/brca-analysis/supplementary}
+\end{center}
+
+\section{Session Information}
+
+\begin{lstlisting}[style=R, caption={R session info for reproducibility}]
+R version 4.3.2 (2023-10-31)
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+attached packages:
+- DESeq2_1.40.0
+- clusterProfiler_4.8.0  
+- org.Hs.eg.db_3.17.0
+- ggplot2_3.4.4
+- dplyr_1.1.4
+- randomForest_4.7-1.1
+\end{lstlisting}
+
+\vfill
+\begin{flushright}
+\footnotesize\textit{made with BetterNotes-AI}
+\end{flushright}
+
+\end{document}

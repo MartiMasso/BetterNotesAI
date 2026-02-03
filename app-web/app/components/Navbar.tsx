@@ -20,9 +20,6 @@ export default function Navbar() {
           <Link className="hover:text-white transition-colors" href="/workspace">
             Workspace
           </Link>
-          <Link className="hover:text-white transition-colors" href="/discover">
-            Discover
-          </Link>
           <Link className="hover:text-white transition-colors" href="/templates">
             Templates
           </Link>
@@ -76,13 +73,6 @@ export default function Navbar() {
             className="block rounded-xl px-3 py-2 text-sm text-white/85 hover:bg-white/10"
           >
             Workspace
-          </Link>
-          <Link
-            href="/discover"
-            onClick={() => setMobileNavOpen(false)}
-            className="block rounded-xl px-3 py-2 text-sm text-white/85 hover:bg-white/10"
-          >
-            Discover
           </Link>
           <Link
             href="/templates"

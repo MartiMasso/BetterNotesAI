@@ -2,11 +2,10 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import TemplateCardSelect from "@/app/components/TemplateCardSelect";
-import AuthModal from "@/app/components/AuthModal";
 import PaywallModal from "@/app/components/PaywallModal";
-import MyProjects from "@/app/components/MyProjects"; // Integrated component
+import PdfPreviewModal from "@/app/components/PdfPreviewModal";
 import { templates } from "../../../lib/templates";
 import { saveWorkspaceDraft, loadWorkspaceDraft, clearWorkspaceDraft, WorkspaceDraft } from "../../../lib/workspaceDraft";
 import { getUsageStatus, incrementMessageCount, saveChat, updateChat, loadChat, UsageStatus } from "../../../lib/api";
@@ -14,7 +13,6 @@ import { supabase } from "@/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 
 type Mode = "start" | "project";
-type StartTab = "my" | "shared" | "templates";
 type Msg = { role: "user" | "assistant"; content: string };
 
 const API_BASE_URL =
@@ -50,12 +48,13 @@ function splitCompilerOutput(err: string): { message: string; log: string } {
 
 function WorkspaceContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [mode, setMode] = useState<Mode>("start");
 
   // START mode
-  const [startTab, setStartTab] = useState<StartTab>("my");
   const [startInput, setStartInput] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const pendingAutoSendRef = useRef<string | null>(null);
 
   // Read template and prompt from URL on mount
   useEffect(() => {
@@ -70,8 +69,22 @@ function WorkspaceContent() {
     const promptParam = searchParams.get("prompt");
     if (promptParam) {
       setStartInput(promptParam);
+      pendingAutoSendRef.current = promptParam;
     }
   }, [searchParams]);
+
+  // Auto-send when coming from homepage with prompt
+  useEffect(() => {
+    if (pendingAutoSendRef.current && startInput === pendingAutoSendRef.current && mode === "start") {
+      pendingAutoSendRef.current = null;
+      // Small delay to ensure state is ready
+      const timer = setTimeout(() => {
+        const sendBtn = document.querySelector('[data-auto-send]') as HTMLButtonElement;
+        if (sendBtn) sendBtn.click();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [startInput, mode]);
 
   // PROJECT mode (chat)
   const [messages, setMessages] = useState<Msg[]>([
@@ -113,9 +126,8 @@ function WorkspaceContent() {
   const [user, setUser] = useState<User | null>(null);
   const [usageStatus, setUsageStatus] = useState<UsageStatus | null>(null);
   const [anonymousMessageSent, setAnonymousMessageSent] = useState(false);
-  const [showAuthModal, setShowAuthModal] = useState(false);
   const [showPaywallModal, setShowPaywallModal] = useState(false);
-  const [authMessage, setAuthMessage] = useState("");
+  const [previewTemplate, setPreviewTemplate] = useState<typeof templates[number] | null>(null);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -245,8 +257,7 @@ function WorkspaceContent() {
     if (!user && !anonymousMessageSent) return true;
 
     if (!user && anonymousMessageSent) {
-      setAuthMessage("Sign up to continue generating documents. Your work will be saved!");
-      setShowAuthModal(true);
+      router.push('/login?message=' + encodeURIComponent('Sign up to continue generating documents. Your work will be saved!'));
       return false;
     }
 
@@ -309,10 +320,6 @@ function WorkspaceContent() {
       console.warn('Failed to auto-save chat:', e);
     }
   }, [user, messages, currentChatId, savedLatex, draftLatex, selectedTemplateId]);
-
-  const handleAuthSuccess = useCallback(() => {
-    setShowAuthModal(false);
-  }, []);
 
   function focusInputWithPrompt(prompt: string) {
     setStartInput(prompt);
@@ -595,32 +602,6 @@ function WorkspaceContent() {
     return copy;
   }
 
-  function renderStartContent() {
-    if (startTab === "my") {
-      return (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Card title="New Project" subtitle="Create a new BetterNotes project" onClick={() => inputRef.current?.focus()} />
-          <MyProjects />
-        </div>
-      );
-    }
-    if (startTab === "shared") {
-      return (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Card title="QFT Summary (shared)" subtitle="Shared by Alice" onClick={() => focusInputWithPrompt("Edit the QFT Summary document...")} />
-          <Card title="Linear Algebra Formulary" subtitle="Shared by Bob" onClick={() => focusInputWithPrompt("Edit the Linear Algebra Formulary...")} />
-        </div>
-      );
-    }
-    return (
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {templates.map(t => (
-          <Card key={t.id} title={t.name} subtitle={t.description} onClick={() => focusInputWithPrompt(`Use the ${t.name} template to...`)} />
-        ))}
-      </div>
-    );
-  }
-
   if (mode === "project") {
     const canSaveAndCompile = draftLatex.trim().length > 0 && !busy();
     return (
@@ -641,6 +622,20 @@ function WorkspaceContent() {
               <div ref={bottomRef} />
             </div>
             <div className="p-4 border-t border-white/10">
+              {/* Usage Indicator */}
+              {user && usageStatus && (
+                <div className="mb-3 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${usageStatus.remaining > 2 ? 'bg-emerald-400' : usageStatus.remaining > 0 ? 'bg-amber-400' : 'bg-red-400'}`} />
+                    <span className="text-white/70">
+                      {usageStatus.is_paid ? 'Pro' : 'Free'}: <span className="text-white font-medium">{usageStatus.remaining}</span>/{usageStatus.free_limit} left
+                    </span>
+                  </div>
+                  {!usageStatus.is_paid && usageStatus.remaining <= 2 && (
+                    <a href="/pricing" className="text-emerald-400 hover:underline">Upgrade</a>
+                  )}
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <button className="h-10 w-10 rounded-xl border border-white/15 bg-white/10 hover:bg-white/15" title="Attach (next step)" disabled>+</button>
                 <input
@@ -704,7 +699,6 @@ function WorkspaceContent() {
             </div>
           </section>
         </div>
-        <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onSuccess={handleAuthSuccess} message={authMessage} />
         <PaywallModal isOpen={showPaywallModal} onClose={() => setShowPaywallModal(false)} remaining={usageStatus?.remaining} resetsAt={usageStatus?.resets_at} />
       </main>
     );
@@ -734,58 +728,71 @@ function WorkspaceContent() {
         <div className="mt-10 mx-auto max-w-3xl rounded-2xl border border-white/15 bg-white/10 p-3 backdrop-blur">
           <div className="flex items-center gap-2">
             <input ref={inputRef} value={startInput} onChange={(e) => setStartInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) startSend(); }} className="h-10 flex-1 rounded-xl border border-white/15 bg-black/20 px-3 text-sm outline-none placeholder:text-white/45 text-white" placeholder="Ask BetterNotes to create a project that..." />
-            <button onClick={startSend} className={["h-10 rounded-xl px-4 text-sm font-semibold", startInput.trim() && !busy() ? "bg-white text-neutral-950" : "bg-white/20 text-white/60"].join(" ")}>{isGenerating ? "Generating…" : "Send"}</button>
+            <button data-auto-send onClick={startSend} className={["h-10 rounded-xl px-4 text-sm font-semibold", startInput.trim() && !busy() ? "bg-white text-neutral-950" : "bg-white/20 text-white/60"].join(" ")}>{isGenerating ? "Generating…" : "Send"}</button>
           </div>
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            {/* Selected template chip */}
+            {selectedTemplateId && (() => {
+              const tmpl = templates.find(t => t.id === selectedTemplateId);
+              return tmpl ? (
+                <div className="flex items-center gap-2 rounded-full border border-emerald-400/40 bg-emerald-400/10 pl-1 pr-2 py-1">
+                  {tmpl.thumbnailPath && (
+                    <div className="w-6 h-6 rounded-full overflow-hidden border border-emerald-400/30">
+                      <img src={tmpl.thumbnailPath} alt="" className="w-full h-full object-cover" />
+                    </div>
+                  )}
+                  <span className="text-xs font-medium text-emerald-300">{tmpl.name}</span>
+                  <button
+                    onClick={() => setSelectedTemplateId(null)}
+                    className="ml-1 text-emerald-400/60 hover:text-emerald-300 transition-colors"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ) : null;
+            })()}
             <Chip onClick={() => setStartInput("Formula sheet for Physics")}>Formula sheet</Chip>
             <Chip onClick={() => setStartInput("Summary of History notes")}>Summary</Chip>
           </div>
         </div>
         <div className="mt-8 mx-auto max-w-4xl">
-          <div className="flex flex-col items-center text-center"><h2 className="text-lg font-semibold text-white">Recommended Templates</h2></div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {templates.slice(0, 4).map(t => (
-              <TemplateCardSelect key={t.id} t={t as any} selected={selectedTemplateId === t.id} onSelect={() => setSelectedTemplateId(curr => curr === t.id ? null : t.id)} />
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-white">Recommended Templates</h2>
+            <Link href="/templates" className="text-sm text-white/70 hover:text-white transition-colors">View all →</Link>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {templates.slice(0, 6).map(t => (
+              <TemplateCardSelect
+                key={t.id}
+                t={t as any}
+                selected={selectedTemplateId === t.id}
+                onSelect={() => setSelectedTemplateId(curr => curr === t.id ? null : t.id)}
+                onPreview={() => setPreviewTemplate(t)}
+                userIsPro={usageStatus?.is_paid ?? false}
+                onProBlocked={() => setShowPaywallModal(true)}
+              />
             ))}
           </div>
         </div>
       </div>
-      <div className="fixed left-0 right-0 bottom-0 md:left-64 z-10 pointer-events-none">
-        <div className="mx-auto max-w-6xl px-4 pb-4">
-          <div className="rounded-2xl border border-white/15 bg-white/10 backdrop-blur p-3 pointer-events-auto">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex gap-2">
-                <TabButton active={startTab === "my"} onClick={() => setStartTab("my")}>My projects</TabButton>
-                <TabButton active={startTab === "shared"} onClick={() => setStartTab("shared")}>Shared with me</TabButton>
-                <TabButton active={startTab === "templates"} onClick={() => setStartTab("templates")}>Templates</TabButton>
-              </div>
-              <Link href="/discover" className="text-sm text-white/70 hover:text-white">Browse all →</Link>
-            </div>
-            <div className="mt-4">{renderStartContent()}</div>
-          </div>
-        </div>
-      </div>
-      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onSuccess={handleAuthSuccess} message={authMessage} />
       <PaywallModal isOpen={showPaywallModal} onClose={() => setShowPaywallModal(false)} remaining={usageStatus?.remaining} resetsAt={usageStatus?.resets_at} />
+      <PdfPreviewModal
+        isOpen={previewTemplate !== null}
+        onClose={() => setPreviewTemplate(null)}
+        pdfUrl={(previewTemplate as any)?.previewPath ?? previewTemplate?.publicPath ?? ""}
+        title={previewTemplate?.name ?? ""}
+        templateId={previewTemplate?.id}
+        isPro={previewTemplate?.isPro ?? false}
+        userIsPro={usageStatus?.is_paid ?? false}
+      />
     </main>
   );
 }
 
-function TabButton({ children, active, onClick }: { children: React.ReactNode; active: boolean; onClick: () => void }) {
-  return <button onClick={onClick} className={["rounded-xl px-3 py-2 text-sm border", active ? "bg-white text-neutral-950 border-white" : "bg-white/10 text-white/85 border-white/15 hover:bg-white/15"].join(" ")}>{children}</button>;
-}
-
 function Chip({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
   return <button onClick={onClick} className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs text-white/80 hover:bg-white/15">{children}</button>;
-}
-
-function Card({ title, subtitle, onClick }: { title: string; subtitle: string; onClick?: () => void }) {
-  return (
-    <div onClick={onClick} className="rounded-2xl border border-white/12 bg-white/8 p-4 hover:bg-white/12 cursor-pointer backdrop-blur transition-colors">
-      <div className="text-sm font-semibold text-white">{title}</div>
-      <div className="mt-1 text-xs text-white/60">{subtitle}</div>
-    </div>
-  );
 }
 
 function Workspace() {

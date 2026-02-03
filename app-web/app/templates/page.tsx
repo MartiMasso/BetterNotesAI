@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/supabaseClient";
+import { getUsageStatus, type UsageStatus } from "@/lib/api";
 import Navbar from "@/app/components/Navbar";
 import AppBackground from "@/app/components/AppBackground";
 import TemplateCard from "@/app/components/TemplateCard";
@@ -14,11 +16,25 @@ type Template = {
   publicPath: string;
   previewPath?: string;
   thumbnailPath?: string;
+  isPro?: boolean;
 };
 
 export default function TemplatesPage() {
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
+  const [usageStatus, setUsageStatus] = useState<UsageStatus | null>(null);
   const pdfUrl = selectedTemplate?.previewPath ?? selectedTemplate?.publicPath ?? "";
+
+  useEffect(() => {
+    async function fetchUsageStatus() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const status = await getUsageStatus();
+        setUsageStatus(status);
+      }
+    }
+
+    fetchUsageStatus();
+  }, []);
 
   return (
     <main className="relative min-h-screen text-white">
@@ -33,9 +49,9 @@ export default function TemplatesPage() {
 
         <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {templates.map((t) => (
-            <TemplateCard 
-              key={t.id} 
-              t={t as Template} 
+            <TemplateCard
+              key={t.id}
+              t={t as Template}
               onClick={setSelectedTemplate}
             />
           ))}
@@ -48,7 +64,10 @@ export default function TemplatesPage() {
         pdfUrl={pdfUrl}
         title={selectedTemplate?.name ?? ""}
         templateId={selectedTemplate?.id}
+        isPro={selectedTemplate?.isPro ?? false}
+        userIsPro={usageStatus?.is_paid ?? false}
       />
     </main>
   );
 }
+

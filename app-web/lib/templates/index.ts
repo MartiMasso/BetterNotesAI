@@ -1,6 +1,7 @@
 // lib/templates/index.ts
 
 export const templates = [
+  // ==================== FREE TEMPLATES ====================
   {
     id: "landscape_3col_maths",
     name: "Landscape 3 columns (Maths)",
@@ -10,6 +11,7 @@ export const templates = [
     previewPath: "/templates/previews/3cols_landscape_Template_Calculus.pdf",
     thumbnailPath: "/templates/previews/3cols_landscape.png",
     description: "Compact 3-column landscape layout ideal for math formulas.",
+    isPro: false,
   },
   {
     id: "2cols_portrait",
@@ -17,8 +19,10 @@ export const templates = [
     format: "latex",
     sourcePath: "lib/templates/latex/2cols_portrait.tex",
     publicPath: "/templates/2cols_portrait.tex",
+    previewPath: "/templates/previews/2cols_portrait_QED_For_Hadrons.pdf",
     thumbnailPath: "/templates/previews/2cols_portrait.png",
     description: "Classic 2-column portrait layout for physics summaries.",
+    isPro: false,
   },
   {
     id: "cornell",
@@ -29,6 +33,7 @@ export const templates = [
     previewPath: "/templates/previews/cornell.pdf",
     thumbnailPath: "/templates/previews/cornell.png",
     description: "Guided note-taking with Cues and Summary sections.",
+    isPro: false,
   },
   {
     id: "problem_solving",
@@ -39,6 +44,7 @@ export const templates = [
     previewPath: "/templates/previews/problem_solving.pdf",
     thumbnailPath: "/templates/previews/problem_solving.png",
     description: "Structured blocks for Engineering/Physics exercises.",
+    isPro: false,
   },
   {
     id: "zettelkasten",
@@ -49,5 +55,40 @@ export const templates = [
     previewPath: "/templates/previews/zettelkasten.pdf",
     thumbnailPath: "/templates/previews/zettelkasten.png",
     description: "Knowledge cards grid layout for modular thinking.",
+    isPro: false,
+  },
+  // ==================== PRO TEMPLATES ====================
+  {
+    id: "academic_paper",
+    name: "Academic Research Paper",
+    format: "latex",
+    sourcePath: "lib/templates/latex/academic_paper.tex",
+    publicPath: "/templates/academic_paper.tex",
+    previewPath: "/templates/previews/academic_paper.pdf",
+    thumbnailPath: "/templates/previews/academic_paper.png",
+    description: "Full research paper with theorems, proofs, and bibliography.",
+    isPro: true,
+  },
+  {
+    id: "lab_report",
+    name: "Technical Lab Report",
+    format: "latex",
+    sourcePath: "lib/templates/latex/lab_report.tex",
+    publicPath: "/templates/lab_report.tex",
+    previewPath: "/templates/previews/lab_report.pdf",
+    thumbnailPath: "/templates/previews/lab_report.png",
+    description: "Experimental report with error analysis and SI units.",
+    isPro: true,
+  },
+  {
+    id: "data_analysis",
+    name: "Data Analysis Report",
+    format: "latex",
+    sourcePath: "lib/templates/latex/data_analysis.tex",
+    publicPath: "/templates/data_analysis.tex",
+    previewPath: "/templates/previews/data_analysis.pdf",
+    thumbnailPath: "/templates/previews/data_analysis.png",
+    description: "Statistical analysis with tables, code blocks, and ML metrics.",
+    isPro: true,
   },
 ] as const;

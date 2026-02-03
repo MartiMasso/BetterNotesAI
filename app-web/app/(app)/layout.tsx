@@ -24,7 +24,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
           <nav className="px-2 py-2 text-sm">
             <SidebarItem label="Home" href="/workspace" />
-            <SidebarItem label="Discover" href="/discover" />
             <SidebarItem label="Templates" href="/templates" />
             <SidebarItem label="Pricing" href="/pricing" />
           </nav>

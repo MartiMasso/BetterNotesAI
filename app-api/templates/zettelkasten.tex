@@ -1,0 +1,289 @@
+\documentclass[10pt]{article}
+
+% =========================
+% Preamble (matching existing templates)
+% =========================
+\usepackage[english]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{lmodern}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage{tcolorbox}
+\tcbuselibrary{raster, skins, breakable}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=blue}
+
+% Geometry: Maximize card space
+\geometry{a4paper, portrait, margin=8mm}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.2em}
+
+% Colors (Knowledge Graph Theme)
+\definecolor{cardblue}{RGB}{0, 80, 158}
+\definecolor{cardborder}{RGB}{100, 100, 100}
+\definecolor{linkpurple}{RGB}{120, 50, 150}
+\definecolor{taggreen}{RGB}{0, 120, 60}
+\definecolor{defgreen}{RGB}{61,176,0}
+\definecolor{thmred}{RGB}{180, 0, 0}
+
+\pagenumbering{gobble}
+
+% Card raster configuration
+\tcbset{
+    zettelstyle/.style={
+        enhanced,
+        sharp corners,
+        colback=white,
+        colframe=cardblue,
+        boxrule=0.8pt,
+        fonttitle=\bfseries\small,
+        coltitle=white,
+        colbacktitle=cardblue,
+        attach boxed title to top left={xshift=3mm, yshift=-2mm},
+        boxed title style={sharp corners, colframe=cardblue},
+        top=5mm,
+        bottom=2mm,
+        left=2mm,
+        right=2mm,
+    }
+}
+
+% Connection macro
+\newcommand{\conn}[1]{\textcolor{linkpurple}{\small $\rightarrow$ \textit{#1}}}
+
+% Tag macro
+\newcommand{\tags}[1]{\par\vfill\textcolor{taggreen}{\scriptsize\ttfamily #1}}
+
+\begin{document}
+
+{\Large\bfseries\color{cardblue} Graph Theory --- Zettelkasten Cards \hfill \normalsize Knowledge Atoms}
+\vspace{3mm}\hrule\vspace{5mm}
+
+%==========================================================
+% PAGE 1: 6 cards
+%==========================================================
+\begin{tcbitemize}[
+    raster columns=2,
+    raster rows=3,
+    raster height=0.92\textheight,
+    raster equal height=rows,
+    raster column skip=4mm,
+    raster row skip=4mm,
+]
+
+\tcbitem[zettelstyle, title={\texttt{G-01} --- Graph Definition}]
+\footnotesize
+\textcolor{defgreen}{\textbf{Def.}} A \textbf{graph} $G = (V, E)$ consists of:
+\begin{itemize}
+\item $V$: finite set of \textbf{vertices} (nodes)
+\item $E \subseteq V \times V$: set of \textbf{edges}
+\end{itemize}
+\textbf{Undirected:} $(u,v) = (v,u)$\\
+\textbf{Directed (digraph):} $(u,v) \neq (v,u)$
+
+\conn{See G-02: Degree}\\
+\conn{See G-05: Adjacency Matrix}
+\tags{\#foundations \#definitions}
+
+\tcbitem[zettelstyle, title={\texttt{G-02} --- Degree}]
+\footnotesize
+\textcolor{defgreen}{\textbf{Def.}} The \textbf{degree} $\deg(v)$ of vertex $v$ is the number of edges incident to $v$.
+
+\textcolor{thmred}{\textbf{Thm.}} (Handshaking Lemma)
+\[
+\sum_{v \in V} \deg(v) = 2|E|
+\]
+\textbf{Corollary:} Number of odd-degree vertices is even.
+
+\conn{See G-01: Graph Definition}\\
+\conn{See G-04: Eulerian Graphs}
+\tags{\#degree \#handshaking}
+
+\tcbitem[zettelstyle, title={\texttt{G-03} --- Paths \& Cycles}]
+\footnotesize
+\textcolor{defgreen}{\textbf{Def.}}
+\begin{itemize}
+\item \textbf{Walk:} sequence $v_0, e_1, v_1, \ldots, v_k$ (vertices/edges can repeat)
+\item \textbf{Path:} walk with no repeated vertices
+\item \textbf{Cycle:} closed walk with no repeated vertices except $v_0 = v_k$
+\end{itemize}
+\textbf{Length} = number of edges.
+
+\conn{See G-06: Connectivity}\\
+\conn{See G-04: Eulerian Graphs}
+\tags{\#paths \#cycles}
+
+\tcbitem[zettelstyle, title={\texttt{G-04} --- Eulerian Graphs}]
+\footnotesize
+\textcolor{defgreen}{\textbf{Def.}}
+\begin{itemize}
+\item \textbf{Eulerian path:} visits every edge exactly once
+\item \textbf{Eulerian circuit:} Eulerian path that starts and ends at same vertex
+\end{itemize}
+
+\textcolor{thmred}{\textbf{Thm.}} (Euler, 1736)\\
+$G$ has Eulerian circuit $\Leftrightarrow$ $G$ connected and all vertices have even degree.\\
+$G$ has Eulerian path $\Leftrightarrow$ exactly 0 or 2 vertices have odd degree.
+
+\conn{See G-02: Degree (Handshaking)}
+\tags{\#eulerian \#circuits}
+
+\tcbitem[zettelstyle, title={\texttt{G-05} --- Adjacency Matrix}]
+\footnotesize
+\textcolor{defgreen}{\textbf{Def.}} For $G$ with $n$ vertices, the \textbf{adjacency matrix} $A \in \{0,1\}^{n \times n}$:
+\[
+A_{ij} = \begin{cases} 1 & (v_i, v_j) \in E \\ 0 & \text{otherwise} \end{cases}
+\]
+\textbf{Properties:}
+\begin{itemize}
+\item Symmetric for undirected graphs
+\item $(A^k)_{ij} = $ \# of walks of length $k$ from $v_i$ to $v_j$
+\end{itemize}
+
+\conn{See G-01: Graph Definition}\\
+\conn{See G-10: Spectral Graph Theory}
+\tags{\#representation \#matrix}
+
+\tcbitem[zettelstyle, title={\texttt{G-06} --- Connectivity}]
+\footnotesize
+\textcolor{defgreen}{\textbf{Def.}}
+\begin{itemize}
+\item $G$ is \textbf{connected} if $\exists$ path between any two vertices
+\item \textbf{Connected component:} maximal connected subgraph
+\item \textbf{Cut vertex:} removal disconnects $G$
+\item \textbf{Bridge:} edge whose removal disconnects $G$
+\end{itemize}
+
+\textcolor{thmred}{\textbf{Thm.}} $G$ connected $\Rightarrow |E| \geq |V| - 1$
+
+\conn{See G-07: Trees}\\
+\conn{See G-03: Paths}
+\tags{\#connectivity \#components}
+
+\end{tcbitemize}
+
+\newpage
+
+%==========================================================
+% PAGE 2: 6 more cards
+%==========================================================
+\begin{tcbitemize}[
+    raster columns=2,
+    raster rows=3,
+    raster height=0.95\textheight,
+    raster equal height=rows,
+    raster column skip=4mm,
+    raster row skip=4mm,
+]
+
+\tcbitem[zettelstyle, title={\texttt{G-07} --- Trees}]
+\footnotesize
+\textcolor{defgreen}{\textbf{Def.}} A \textbf{tree} is a connected acyclic graph.
+
+\textcolor{thmred}{\textbf{Thm.}} Equivalent definitions for $G$ with $n$ vertices:
+\begin{enumerate}
+\item $G$ is connected and has $n-1$ edges
+\item $G$ is acyclic and has $n-1$ edges
+\item $G$ is connected and removing any edge disconnects it
+\item Any two vertices connected by unique path
+\end{enumerate}
+
+\conn{See G-08: Spanning Trees}\\
+\conn{See G-06: Connectivity}
+\tags{\#trees \#acyclic}
+
+\tcbitem[zettelstyle, title={\texttt{G-08} --- Spanning Trees}]
+\footnotesize
+\textcolor{defgreen}{\textbf{Def.}} A \textbf{spanning tree} of $G$ is a subgraph that:
+\begin{itemize}
+\item Contains all vertices of $G$
+\item Is a tree
+\end{itemize}
+
+\textcolor{thmred}{\textbf{Thm.}} (Cayley) Number of labeled spanning trees of $K_n$ is $n^{n-2}$.
+
+\textbf{Algorithms:}
+\begin{itemize}
+\item Kruskal: greedy, sort edges by weight
+\item Prim: grow tree from single vertex
+\end{itemize}
+
+\conn{See G-07: Trees}
+\tags{\#spanning \#mst}
+
+\tcbitem[zettelstyle, title={\texttt{G-09} --- Planar Graphs}]
+\footnotesize
+\textcolor{defgreen}{\textbf{Def.}} $G$ is \textbf{planar} if it can be drawn in the plane without edge crossings.
+
+\textcolor{thmred}{\textbf{Thm.}} (Euler's Formula) For connected planar graph:
+\[
+\boxed{V - E + F = 2}
+\]
+where $F$ = number of faces (including outer).
+
+\textcolor{thmred}{\textbf{Cor.}} For planar $G$ with $|V| \geq 3$: $|E| \leq 3|V| - 6$
+
+\textbf{Non-planar:} $K_5$, $K_{3,3}$
+
+\conn{See G-11: Kuratowski}
+\tags{\#planar \#euler}
+
+\tcbitem[zettelstyle, title={\texttt{G-10} --- Graph Coloring}]
+\footnotesize
+\textcolor{defgreen}{\textbf{Def.}} A \textbf{proper $k$-coloring} assigns colors $\{1, \ldots, k\}$ to vertices s.t. adjacent vertices have different colors.
+
+\textcolor{defgreen}{\textbf{Def.}} \textbf{Chromatic number} $\chi(G)$ = minimum $k$ for proper coloring.
+
+\textbf{Bounds:}
+\begin{itemize}
+\item $\chi(G) \geq \omega(G)$ (clique number)
+\item $\chi(G) \leq \Delta(G) + 1$ (max degree + 1)
+\end{itemize}
+
+\textcolor{thmred}{\textbf{Thm.}} (4-Color) Every planar graph is 4-colorable.
+
+\conn{See G-09: Planar Graphs}
+\tags{\#coloring \#chromatic}
+
+\tcbitem[zettelstyle, title={\texttt{G-11} --- Bipartite Graphs}]
+\footnotesize
+\textcolor{defgreen}{\textbf{Def.}} $G = (V, E)$ is \textbf{bipartite} if $V = A \cup B$ with $A \cap B = \emptyset$ and all edges go between $A$ and $B$.
+
+\textcolor{thmred}{\textbf{Thm.}} $G$ is bipartite $\Leftrightarrow$ $G$ has no odd cycles $\Leftrightarrow$ $\chi(G) \leq 2$.
+
+\textbf{Examples:}
+\begin{itemize}
+\item Trees are bipartite
+\item $K_{m,n}$ = complete bipartite
+\end{itemize}
+
+\conn{See G-10: Graph Coloring}\\
+\conn{See G-12: Matching}
+\tags{\#bipartite \#2colorable}
+
+\tcbitem[zettelstyle, title={\texttt{G-12} --- Matching}]
+\footnotesize
+\textcolor{defgreen}{\textbf{Def.}} A \textbf{matching} $M \subseteq E$ is a set of edges with no shared vertices. \textbf{Perfect matching:} covers all vertices.
+
+\textcolor{thmred}{\textbf{Thm.}} (Hall's Marriage) Bipartite $G = (A \cup B, E)$ has matching covering $A$ $\Leftrightarrow$
+\[
+|N(S)| \geq |S| \quad \forall S \subseteq A
+\]
+where $N(S)$ = neighbors of $S$.
+
+\textbf{Algorithm:} Hungarian (poly-time for bipartite).
+
+\conn{See G-11: Bipartite}
+\tags{\#matching \#hall}
+
+\end{tcbitemize}
+
+% made with BetterNotes-AI
+\begin{flushright}\footnotesize \textit{made with BetterNotes-AI}\end{flushright}
+
+\end{document}

@@ -9,10 +9,21 @@ interface PdfPreviewModalProps {
   pdfUrl: string;
   title: string;
   templateId?: string;
+  isPro?: boolean;
+  userIsPro?: boolean;
 }
 
-export default function PdfPreviewModal({ isOpen, onClose, pdfUrl, title, templateId }: PdfPreviewModalProps) {
+export default function PdfPreviewModal({
+  isOpen,
+  onClose,
+  pdfUrl,
+  title,
+  templateId,
+  isPro = false,
+  userIsPro = false
+}: PdfPreviewModalProps) {
   const router = useRouter();
+  const isLocked = isPro && !userIsPro;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -29,6 +40,11 @@ export default function PdfPreviewModal({ isOpen, onClose, pdfUrl, title, templa
   }, [isOpen]);
 
   function handleUseTemplate() {
+    if (isLocked) {
+      router.push("/pricing");
+      onClose();
+      return;
+    }
     if (templateId) router.push(`/workspace?template=${templateId}`);
     onClose();
   }
@@ -37,21 +53,33 @@ export default function PdfPreviewModal({ isOpen, onClose, pdfUrl, title, templa
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div 
+      <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
-      
+
       <div className="relative z-10 w-full max-w-5xl h-[92vh] flex flex-col rounded-2xl border border-white/20 bg-neutral-900/95 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_25px_80px_rgba(0,0,0,0.5)]">
         <div className="flex items-center justify-between px-5 py-3 border-b border-white/10">
-          <h2 className="text-lg font-semibold text-white truncate pr-4">{title}</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold text-white truncate pr-4">{title}</h2>
+            {isPro && (
+              <span className="rounded-md bg-gradient-to-r from-amber-500 to-orange-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                PRO
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             {templateId && (
               <button
                 onClick={handleUseTemplate}
-                className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-neutral-950 hover:bg-white/90 transition-colors"
+                className={[
+                  "rounded-xl px-4 py-2 text-sm font-semibold transition-colors",
+                  isLocked
+                    ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600"
+                    : "bg-white text-neutral-950 hover:bg-white/90"
+                ].join(" ")}
               >
-                Use this template →
+                {isLocked ? "Upgrade to Pro →" : "Use this template →"}
               </button>
             )}
             <a
@@ -79,7 +107,7 @@ export default function PdfPreviewModal({ isOpen, onClose, pdfUrl, title, templa
             </button>
           </div>
         </div>
-        
+
         <div className="flex-1 min-h-0 p-3">
           <iframe
             src={pdfUrl}
@@ -91,3 +119,4 @@ export default function PdfPreviewModal({ isOpen, onClose, pdfUrl, title, templa
     </div>
   );
 }
+

@@ -1,0 +1,442 @@
+\documentclass[11pt]{article}
+
+% =============================================================================
+% TECHNICAL LAB REPORT TEMPLATE - PRO
+% For: Engineers, Experimental Physicists, Chemistry/Materials Science
+% Style: Professional technical report with error analysis
+% =============================================================================
+
+\usepackage[english]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+
+% Page geometry
+\usepackage{geometry}
+\geometry{a4paper, left=25mm, right=25mm, top=25mm, bottom=30mm}
+
+% Mathematics
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{siunitx}
+\sisetup{
+    separate-uncertainty=true,
+    multi-part-units=single,
+    per-mode=symbol
+}
+
+% Graphics and tables
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{tabularx}
+\usepackage{caption}
+\captionsetup{font=small, labelfont=bf}
+
+% Code listings (for equipment/data)
+\usepackage{listings}
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny,
+    backgroundcolor=\color{gray!10}
+}
+
+% Colors
+\usepackage{xcolor}
+\definecolor{darkblue}{RGB}{0,51,102}
+
+% Links
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=darkblue, citecolor=darkblue, urlcolor=blue}
+
+% Section formatting
+\usepackage{titlesec}
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.5em}{}
+\titleformat{\subsubsection}{\normalsize\itshape}{\thesubsubsection}{0.5em}{}
+
+% Header/footer
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\textit{PHY4501 -- Advanced Laboratory}}
+\fancyhead[R]{\small\textit{Photoelectric Effect}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% Custom commands for uncertainties
+\newcommand{\uncertainty}[2]{#1 \pm #2}
+\newcommand{\result}[3]{#1 = \SI{#2 \pm #3}}
+\newcommand{\measured}[2]{\SI{#1}{#2}}
+
+% Boxed equations for final results
+\usepackage{empheq}
+\newcommand{\boxedeq}[1]{\begin{empheq}[box=\fbox]{equation}#1\end{empheq}}
+
+\begin{document}
+
+% =============================================================================
+% TITLE PAGE
+% =============================================================================
+\begin{titlepage}
+\centering
+
+\vspace*{2cm}
+
+{\Large\textsc{Department of Physics}}\\[0.3cm]
+{\large\textsc{University of Example}}\\[2cm]
+
+\rule{\linewidth}{0.5pt}\\[0.4cm]
+{\LARGE\bfseries Determination of Planck's Constant\\[0.2cm] via the Photoelectric Effect}\\[0.3cm]
+\rule{\linewidth}{0.5pt}\\[1.5cm]
+
+{\large\textbf{PHY4501 -- Advanced Laboratory Physics}}\\[0.5cm]
+
+\vfill
+
+\begin{tabular}{rl}
+\textbf{Author:} & Student Name (ID: 12345678) \\[0.2cm]
+\textbf{Lab Partner:} & Partner Name \\[0.2cm]
+\textbf{Date of Experiment:} & 15 January 2024 \\[0.2cm]
+\textbf{Date Submitted:} & 22 January 2024 \\[0.2cm]
+\textbf{Demonstrator:} & Dr. J. Smith \\
+\end{tabular}
+
+\vfill
+
+{\small Word count: 2,847}
+
+\end{titlepage}
+
+% =============================================================================
+% ABSTRACT
+% =============================================================================
+\begin{abstract}
+\noindent
+The photoelectric effect was used to determine Planck's constant by measuring the stopping potential as a function of incident light frequency. A mercury lamp with interference filters provided five discrete wavelengths (\SIrange{365}{578}{\nano\meter}). Linear regression of stopping potential versus frequency yielded $h = \SI{6.58 \pm 0.12 e-34}{\joule\second}$, in agreement with the accepted value of $h = \SI{6.626 e-34}{\joule\second}$ within experimental uncertainty. The work function of the potassium cathode was determined to be $\phi = \SI{2.14 \pm 0.08}{\electronvolt}$. Systematic errors from contact potential differences and stray light were analyzed. The relative uncertainty of $1.8\%$ demonstrates the precision achievable with careful technique.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% =============================================================================
+% 1. INTRODUCTION
+% =============================================================================
+\section{Introduction}
+
+\subsection{Theoretical Background}
+
+The photoelectric effect---the emission of electrons from a metal surface when illuminated by light---was first observed by Hertz in 1887 and explained by Einstein in 1905~\cite{einstein1905}. Einstein proposed that light consists of discrete quanta (photons) with energy
+\begin{equation}
+    E_{\text{photon}} = h\nu,
+    \label{eq:photon_energy}
+\end{equation}
+where $h$ is Planck's constant and $\nu$ is the frequency of light.
+
+When a photon is absorbed by an electron in the metal, the electron gains sufficient energy to overcome the work function $\phi$ (the minimum energy required to escape the surface) and be ejected with kinetic energy:
+\begin{equation}
+    K_{\text{max}} = h\nu - \phi.
+    \label{eq:photoelectric}
+\end{equation}
+
+The stopping potential $V_s$ is the retarding voltage required to halt the most energetic photoelectrons:
+\begin{equation}
+    eV_s = K_{\text{max}} = h\nu - \phi,
+    \label{eq:stopping}
+\end{equation}
+where $e$ is the elementary charge. Rearranging:
+\begin{equation}
+    V_s = \frac{h}{e}\nu - \frac{\phi}{e}.
+    \label{eq:linear}
+\end{equation}
+
+This equation predicts a linear relationship between $V_s$ and $\nu$, with slope $h/e$ and intercept $-\phi/e$.
+
+\subsection{Objectives}
+
+The primary objectives of this experiment are:
+\begin{enumerate}
+    \item Verify the linear relationship between stopping potential and frequency predicted by Eq.~\eqref{eq:linear}.
+    \item Determine Planck's constant $h$ from the slope of the $V_s$--$\nu$ relationship.
+    \item Calculate the work function $\phi$ of the potassium photocathode.
+    \item Analyze systematic and random uncertainties.
+\end{enumerate}
+
+% =============================================================================
+% 2. EXPERIMENTAL METHOD
+% =============================================================================
+\section{Experimental Method}
+
+\subsection{Apparatus}
+
+The experimental setup consisted of:
+\begin{itemize}
+    \item PASCO h/e Apparatus (Model AP-9370)
+    \item Mercury discharge lamp (Hg spectral source, 100W)
+    \item Interference filters: \SI{365}{\nano\meter}, \SI{405}{\nano\meter}, \SI{436}{\nano\meter}, \SI{546}{\nano\meter}, \SI{578}{\nano\meter}
+    \item Digital voltmeter (Keithley 2000, resolution \SI{0.1}{\milli\volt})
+    \item Optical rail and mounts
+    \item Light-tight enclosure
+\end{itemize}
+
+The h/e apparatus contains a vacuum phototube with potassium photocathode and collecting anode. Built-in electronics allow direct measurement of stopping potential.
+
+\subsection{Procedure}
+
+\begin{enumerate}
+    \item The apparatus was allowed to warm up for 30 minutes to achieve thermal equilibrium.
+    
+    \item The mercury lamp was positioned \SI{40}{\centi\meter} from the phototube entrance aperture.
+    
+    \item For each wavelength:
+    \begin{enumerate}
+        \item The appropriate interference filter was inserted.
+        \item The voltage display was zeroed with the shutter closed.
+        \item The shutter was opened and the stopping potential recorded after stabilization ($\sim$\SI{30}{\second}).
+        \item Three independent measurements were taken.
+    \end{enumerate}
+    
+    \item Background measurements with an opaque filter confirmed zero current in darkness.
+    
+    \item Room lights were extinguished to minimize stray light.
+\end{enumerate}
+
+% =============================================================================
+% 3. DATA AND ANALYSIS
+% =============================================================================
+\section{Data and Analysis}
+
+\subsection{Raw Data}
+
+Table~\ref{tab:raw_data} presents the measured stopping potentials for each wavelength. The frequency was calculated from $\nu = c/\lambda$ using $c = \SI{2.998e8}{\meter\per\second}$.
+
+\begin{table}[htbp]
+\centering
+\caption{Measured stopping potentials for five mercury spectral lines.}
+\label{tab:raw_data}
+\begin{tabular}{@{}cccccc@{}}
+\toprule
+$\lambda$ & $\nu$ & $V_{s,1}$ & $V_{s,2}$ & $V_{s,3}$ & $\bar{V}_s$ \\
+(\si{\nano\meter}) & (\SI{e14}{\hertz}) & (\si{\volt}) & (\si{\volt}) & (\si{\volt}) & (\si{\volt}) \\
+\midrule
+365.0 & 8.214 & 1.721 & 1.718 & 1.724 & $1.721 \pm 0.003$ \\
+404.7 & 7.408 & 1.402 & 1.398 & 1.405 & $1.402 \pm 0.004$ \\
+435.8 & 6.879 & 1.181 & 1.177 & 1.183 & $1.180 \pm 0.003$ \\
+546.1 & 5.490 & 0.627 & 0.631 & 0.625 & $0.628 \pm 0.003$ \\
+577.0 & 5.196 & 0.508 & 0.512 & 0.505 & $0.508 \pm 0.004$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The uncertainty in the mean was calculated using the standard error:
+\begin{equation}
+    \sigma_{\bar{V}} = \frac{\sigma}{\sqrt{n}} = \frac{\sigma}{\sqrt{3}},
+\end{equation}
+where $\sigma$ is the standard deviation of the three measurements.
+
+\subsection{Linear Regression Analysis}
+
+The data were fitted to the linear model $V_s = m\nu + c$ using weighted least-squares regression. The weights were taken as $w_i = 1/\sigma_i^2$.
+
+The weighted least-squares estimators are:
+\begin{align}
+    m &= \frac{S_{xy}}{S_{xx}} = \frac{\sum w_i(\nu_i - \bar{\nu})(V_{s,i} - \bar{V}_s)}{\sum w_i(\nu_i - \bar{\nu})^2}, \\
+    c &= \bar{V}_s - m\bar{\nu},
+\end{align}
+where overbars denote weighted means.
+
+The resulting fit parameters are:
+\begin{align}
+    m &= \SI{4.109 \pm 0.074 e-15}{\volt\per\hertz}, \\
+    c &= \SI{-2.143 \pm 0.052}{\volt}.
+\end{align}
+
+The coefficient of determination $R^2 = 0.9987$ indicates excellent linearity.
+
+\subsection{Determination of Planck's Constant}
+
+From Eq.~\eqref{eq:linear}, the slope equals $h/e$. Therefore:
+\begin{equation}
+    h = m \cdot e = \SI{4.109 e-15}{\volt\per\hertz} \times \SI{1.602 e-19}{\coulomb}.
+\end{equation}
+
+\boxedeq{h = \SI{6.58 \pm 0.12 e-34}{\joule\second}}
+
+The uncertainty in $h$ was propagated from the slope uncertainty:
+\begin{equation}
+    \frac{\sigma_h}{h} = \frac{\sigma_m}{m} = \frac{0.074}{4.109} = 1.8\%.
+\end{equation}
+
+\subsection{Work Function Calculation}
+
+The work function is obtained from the intercept:
+\begin{equation}
+    \phi = -c \cdot e = -(-2.143) \times 1.602 = \SI{3.43e-19}{\joule}.
+\end{equation}
+
+Converting to electron volts ($\SI{1}{\electronvolt} = \SI{1.602e-19}{\joule}$):
+
+\boxedeq{\phi = \SI{2.14 \pm 0.08}{\electronvolt}}
+
+This agrees with the literature value for potassium: $\phi_{\text{K}} = \SI{2.30}{\electronvolt}$~\cite{michaelson1977} within the combined uncertainty.
+
+% =============================================================================
+% 4. ERROR ANALYSIS
+% =============================================================================
+\section{Error Analysis}
+
+\subsection{Random Uncertainties}
+
+The primary sources of random uncertainty were:
+\begin{itemize}
+    \item \textbf{Voltage measurement:} The digital voltmeter resolution of \SI{0.1}{\milli\volt} contributed negligible uncertainty compared to measurement variations.
+    
+    \item \textbf{Repeatability:} The standard deviation of repeated measurements (\SIrange{3}{4}{\milli\volt}) reflects fluctuations in photocurrent and electronic noise.
+    
+    \item \textbf{Wavelength uncertainty:} Filter bandwidth of $\pm$\SI{5}{\nano\meter} was neglected as mercury lines are narrow ($<$\SI{0.1}{\nano\meter}).
+\end{itemize}
+
+\subsection{Systematic Uncertainties}
+
+\begin{enumerate}
+    \item \textbf{Contact potential difference:} The work function difference between cathode and anode creates an offset voltage. This affects the intercept (and hence $\phi$) but not the slope (and hence $h$).
+    
+    \item \textbf{Stray light:} Ambient light entering the phototube would cause spurious photoemission. This was minimized by using a light-tight enclosure.
+    
+    \item \textbf{Temperature effects:} The work function varies with temperature as $\phi(T) = \phi_0 - \alpha T$. At room temperature, this effect is $<$\SI{0.01}{\electronvolt}.
+\end{enumerate}
+
+\subsection{Uncertainty Budget}
+
+Table~\ref{tab:uncertainty} summarizes the uncertainty contributions to the final value of $h$.
+
+\begin{table}[htbp]
+\centering
+\caption{Uncertainty budget for Planck's constant determination.}
+\label{tab:uncertainty}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Source & Type & $\sigma_h$ (\SI{e-34}{\joule\second}) & \% Contribution \\
+\midrule
+Voltage repeatability & A & 0.10 & 69\% \\
+Frequency calibration & B & 0.05 & 17\% \\
+Regression model & A & 0.04 & 11\% \\
+Other (stray light, T) & B & 0.02 & 3\% \\
+\midrule
+\textbf{Combined} & & \textbf{0.12} & \textbf{100\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Type A uncertainties are evaluated statistically; Type B are estimated from other information.
+
+% =============================================================================
+% 5. DISCUSSION
+% =============================================================================
+\section{Discussion}
+
+\subsection{Comparison with Accepted Value}
+
+The experimental value $h = \SI{6.58 \pm 0.12 e-34}{\joule\second}$ agrees with the CODATA recommended value $h = \SI{6.62607015 e-34}{\joule\second}$~\cite{codata2018} within one standard deviation:
+\begin{equation}
+    E_n = \frac{|h_{\text{exp}} - h_{\text{acc}}|}{\sigma_h} = \frac{|6.58 - 6.626|}{0.12} = 0.38.
+\end{equation}
+
+The normalized error $E_n < 1$ indicates consistency with no evidence of unaccounted systematic errors.
+
+\subsection{Discrepancy in Work Function}
+
+The measured work function $\phi = \SI{2.14}{\electronvolt}$ is approximately 7\% lower than the literature value for clean potassium (\SI{2.30}{\electronvolt}). This discrepancy likely arises from:
+\begin{enumerate}
+    \item Surface contamination (oxide layer, adsorbed gases)
+    \item Contact potential difference not fully corrected
+    \item Possible cesium activation of the photocathode
+\end{enumerate}
+
+\subsection{Quality of Linear Fit}
+
+The high coefficient of determination ($R^2 = 0.9987$) confirms the linear relationship predicted by Einstein's photoelectric equation. The residuals showed no systematic trend, indicating that higher-order terms are unnecessary.
+
+Figure~\ref{fig:residuals} (not shown) would display residuals versus frequency, confirming homoscedasticity.
+
+% =============================================================================
+% 6. CONCLUSIONS
+% =============================================================================
+\section{Conclusions}
+
+\begin{enumerate}
+    \item The photoelectric effect was successfully used to determine Planck's constant with 1.8\% relative uncertainty.
+    
+    \item The measured value $h = \SI{6.58 \pm 0.12 e-34}{\joule\second}$ is consistent with the accepted value.
+    
+    \item The work function of the potassium cathode was determined to be $\phi = \SI{2.14 \pm 0.08}{\electronvolt}$.
+    
+    \item The linear relationship between stopping potential and frequency was verified with $R^2 = 0.9987$.
+    
+    \item The dominant source of uncertainty was voltage measurement repeatability (69\% of total variance).
+\end{enumerate}
+
+\subsection{Recommendations}
+
+Future improvements could include:
+\begin{itemize}
+    \item Use of a lock-in amplifier to reduce photocurrent noise
+    \item Addition of UV wavelengths ($\lambda < \SI{365}{\nano\meter}$) to extend the frequency range
+    \item Measurement of the $I$--$V$ characteristic curve for more accurate $V_s$ determination
+\end{itemize}
+
+% =============================================================================
+% REFERENCES
+% =============================================================================
+\begin{thebibliography}{9}
+
+\bibitem{einstein1905}
+A. Einstein, ``Über einen die Erzeugung und Verwandlung des Lichtes betreffenden heuristischen Gesichtspunkt,'' \textit{Ann. Phys.} \textbf{322}, 132--148 (1905).
+
+\bibitem{michaelson1977}
+H. B. Michaelson, ``The work function of the elements and its periodicity,'' \textit{J. Appl. Phys.} \textbf{48}, 4729--4733 (1977).
+
+\bibitem{codata2018}
+CODATA Recommended Values of the Fundamental Physical Constants: 2018, NIST. \url{https://physics.nist.gov/cuu/Constants/}
+
+\bibitem{taylor1997}
+J. R. Taylor, \textit{An Introduction to Error Analysis}, 2nd ed. (University Science Books, 1997).
+
+\bibitem{bevington2003}
+P. R. Bevington and D. K. Robinson, \textit{Data Reduction and Error Analysis for the Physical Sciences}, 3rd ed. (McGraw-Hill, 2003).
+
+\end{thebibliography}
+
+% =============================================================================
+% APPENDIX
+% =============================================================================
+\appendix
+\section{Sample Calculations}
+
+\subsection{Frequency from Wavelength}
+
+For $\lambda = \SI{365.0}{\nano\meter}$:
+\begin{equation}
+    \nu = \frac{c}{\lambda} = \frac{\SI{2.998e8}{\meter\per\second}}{\SI{365.0e-9}{\meter}} = \SI{8.214e14}{\hertz}.
+\end{equation}
+
+\subsection{Propagation of Uncertainty}
+
+For a product $h = m \cdot e$, the relative uncertainty is:
+\begin{equation}
+    \frac{\sigma_h}{h} = \sqrt{\left(\frac{\sigma_m}{m}\right)^2 + \left(\frac{\sigma_e}{e}\right)^2} \approx \frac{\sigma_m}{m},
+\end{equation}
+since $\sigma_e/e \ll \sigma_m/m$ (the elementary charge is known exactly by definition since 2019).
+
+\vfill
+\begin{flushright}
+\footnotesize\textit{made with BetterNotes-AI}
+\end{flushright}
+
+\end{document}
