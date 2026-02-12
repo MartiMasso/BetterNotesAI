@@ -55,6 +55,75 @@ function WorkspaceContent() {
   const [startInput, setStartInput] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const pendingAutoSendRef = useRef<string | null>(null);
+  const [fileError, setFileError] = useState("");
+
+  // FILE ATTACHMENT STATE
+  type FileAttachment = { id: string; file: File; type: 'image' | 'text' | 'document'; previewUrl?: string };
+  const [files, setFiles] = useState<FileAttachment[]>([]);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files || []);
+    if (selected.length === 0) return;
+
+    // Limits
+    const isPro = usageStatus?.is_paid;
+    const isFreeAuth = !!user;
+    const limit = isPro ? 5 : isFreeAuth ? 2 : 1;
+
+    if (files.length + selected.length > limit) {
+      setFileError(`You can only upload ${limit} files on your ${isPro ? 'Pro' : isFreeAuth ? 'Free' : 'Guest'} plan.`);
+      // clear input
+      e.target.value = "";
+      return;
+    }
+
+    const newFiles: FileAttachment[] = [];
+    let error = "";
+
+    for (const file of selected) {
+      // Size check (10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        error = `File "${file.name}" exceeds 10MB limit.`;
+        break;
+      }
+
+      // Video check (strictly banned)
+      if (file.type.startsWith('video/')) {
+        error = "Video files are not allowed. Only Images and Documents (PDF, DOCX, TXT).";
+        break;
+      }
+
+      // Type classification
+      let type: FileAttachment['type'] = 'document';
+      if (file.type.startsWith('image/')) type = 'image';
+      else if (file.type === 'text/plain' || file.name.endsWith('.md') || file.name.endsWith('.csv')) type = 'text';
+
+      newFiles.push({
+        id: Math.random().toString(36).slice(2),
+        file,
+        type,
+        previewUrl: type === 'image' ? URL.createObjectURL(file) : undefined
+      });
+    }
+
+    if (error) {
+      setFileError(error);
+      e.target.value = "";
+      return;
+    }
+
+    setFileError("");
+    setFiles(prev => [...prev, ...newFiles]);
+    e.target.value = ""; // reset to allow selecting same file again
+  };
+
+  const removeFile = (id: string) => {
+    setFiles(prev => {
+      const target = prev.find(f => f.id === id);
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter(f => f.id !== id);
+    });
+  };
 
   // Read template and prompt from URL on mount
   useEffect(() => {
@@ -338,18 +407,20 @@ function WorkspaceContent() {
   async function generateLatexFromPrompt(
     prompt: string,
     templateId?: string | null,
-    baseLatex?: string
-  ): Promise<{ ok: true; latex: string } | { ok: false; error: string }> {
-    console.log('[generate] Starting generation...', { prompt, templateId, hasBase: !!baseLatex });
+    baseLatex?: string,
+    files?: any[]
+  ): Promise<{ ok: true; latex?: string; message?: string } | { ok: false; error: string }> {
+    console.log('[generate] Starting generation...', { prompt, templateId, hasBase: !!baseLatex, filesCount: files?.length });
     try {
       setIsGenerating(true);
 
-      const payload: { prompt: string; templateId?: string; baseLatex?: string } = { prompt };
+      const payload: { prompt: string; templateId?: string; baseLatex?: string; files?: any[] } = { prompt };
       if (templateId) payload.templateId = templateId;
       if (baseLatex?.trim()) payload.baseLatex = baseLatex;
+      if (files && files.length > 0) payload.files = files;
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
+      const timeoutId = setTimeout(() => controller.abort(), 180000);
 
       const r = await fetch(`${API_BASE_URL}/generate-latex`, {
         method: "POST",
@@ -360,10 +431,16 @@ function WorkspaceContent() {
       clearTimeout(timeoutId);
 
       const data = await r.json().catch(() => null);
-      if (!r.ok) return { ok: false, error: data?.error ?? "Failed to generate LaTeX." };
+      if (!r.ok) return { ok: false, error: data?.error ?? "Failed to generate." };
+
+      if (data.message) {
+        return { ok: true, message: data.message };
+      }
 
       const latex = (data?.latex ?? "").toString();
-      if (!latex.trim()) return { ok: false, error: "Model returned empty LaTeX." };
+      // Relaxed check: if message is present, latex is optional. If neither, error.
+      if (!latex.trim() && !data.message) return { ok: false, error: "Model returned empty response." };
+
       return { ok: true, latex };
     } catch (e: any) {
       if (e.name === 'AbortError') return { ok: false, error: "Request timed out (60s)." };
@@ -446,9 +523,42 @@ function WorkspaceContent() {
   }
 
   // ---------- Send flows ----------
+
+  async function processFilesForPayload(currentFiles: FileAttachment[]): Promise<{ type: 'image' | 'text' | 'document'; url?: string; data?: string; name: string }[]> {
+    if (currentFiles.length === 0) return [];
+
+    // Determine upload method
+    const isAuth = !!user;
+
+    const processed = await Promise.all(currentFiles.map(async (f) => {
+      // If auth, try upload to storage
+      if (isAuth && user) {
+        // Import dynamically or assume imported
+        const { uploadFileToStorage, fileToBase64 } = await import("../../../lib/storage");
+
+        // For images/docs, upload to storage
+        const publicUrl = await uploadFileToStorage(f.file, user.id);
+        if (publicUrl) {
+          return { type: f.type, url: publicUrl, name: f.file.name };
+        }
+        // Fallback to base64 if upload fails? Or just fail? Let's fallback to base64 for resilience if small enough
+        console.warn("Upload failed, falling back to base64");
+      }
+
+      // Anonymous or fallback: Base64
+      const { fileToBase64 } = await import("../../../lib/storage");
+      const b64 = await fileToBase64(f.file);
+      return { type: f.type, data: b64, name: f.file.name };
+    }));
+
+    return processed;
+  }
+
   async function startSend() {
     const text = startInput.trim();
-    if (!text || busy()) return;
+    const hasFiles = files.length > 0;
+
+    if ((!text && !hasFiles) || busy()) return;
 
     const allowed = await canSendMessage();
     if (!allowed) return;
@@ -457,45 +567,36 @@ function WorkspaceContent() {
     setStartInput("");
     setProjectInput("");
 
+    // Create message with generic "Processing files..." if needed
     setMessages((m) => [
       ...m,
-      { role: "user", content: text },
-      { role: "assistant", content: "Working… generating LaTeX..." },
+      { role: "user", content: text || (hasFiles ? `[Sent ${files.length} file(s)]` : "") },
+      { role: "assistant", content: "Working… processing request..." },
     ]);
 
-    const gen = await generateLatexFromPrompt(text, selectedTemplate?.id);
+    // Process files
+    const filePayload = await processFilesForPayload(files);
+
+    // Clear files after processing? Or keep them until success? 
+    // Usually better to clear to avoid resending by accident.
+    setFiles([]);
+    setFileError("");
+
+    const gen = await generateLatexFromPrompt(text, selectedTemplate?.id, undefined, filePayload);
     if (!gen.ok) {
+      // Restore files if failed? Complex. Let's just error.
       setMessages((m) => replaceLastWorking(m, `Error: ${gen.error}`));
       return;
     }
 
-    // UPDATE UI IMMEDIATELY
-    setDraftLatex(gen.latex);
-    setSavedLatex(gen.latex);
-    setCompiledLatex("");
-    setDirty(false);
-    setActiveRightTab("preview");
-
-    setMessages((m) => replaceLastWorking(m, `Generated. Compiling PDF...`));
-
-    // RUN TASKS IN PARALLEL
-    const compilePromise = compileDirect(gen.latex);
-    const savePromise = onMessageSent(gen.latex);
-
-    const comp = await compilePromise;
-    if (!comp.ok) {
-      setMessages((m) => replaceLastWorking(m, `Generated LaTeX, but compilation failed. Use “Fix with AI”.`));
-    } else {
-      setCompiledLatex(gen.latex);
-      setMessages((m) => replaceLastWorking(m, `Done. Preview updated.`));
-    }
-
-    await savePromise;
+    handleGenerationResult(gen);
   }
 
   async function projectSend() {
     const text = projectInput.trim();
-    if (!text || busy()) return;
+    const hasFiles = files.length > 0;
+
+    if ((!text && !hasFiles) || busy()) return;
 
     const allowed = await canSendMessage();
     if (!allowed) return;
@@ -504,35 +605,56 @@ function WorkspaceContent() {
 
     setMessages((m) => [
       ...m,
-      { role: "user", content: text },
-      { role: "assistant", content: "Working… generating LaTeX..." },
+      { role: "user", content: text || (hasFiles ? `[Sent ${files.length} file(s)]` : "") },
+      { role: "assistant", content: "Working… processing request..." },
     ]);
+
+    // Process files
+    const filePayload = await processFilesForPayload(files);
+    setFiles([]);
+    setFileError("");
 
     const base = (draftLatex || savedLatex || "").trim();
 
-    const gen = await generateLatexFromPrompt(text, selectedTemplate?.id, base);
+    const gen = await generateLatexFromPrompt(text, selectedTemplate?.id, base, filePayload);
     if (!gen.ok) {
       setMessages((m) => replaceLastWorking(m, `Error: ${gen.error}`));
       return;
     }
 
+    handleGenerationResult(gen);
+  }
+
+  // Refactored result handler to avoid duplication
+  async function handleGenerationResult(gen: { ok: true; latex?: string; message?: string } | { ok: false; error: string }) {
+    if (!gen.ok) return; // Should be handled by caller
+
+    // Check if it's a plain message (General Chat)
+    if (gen.message) {
+      setMessages((m) => replaceLastWorking(m, gen.message!));
+      return;
+    }
+
+    // It's LaTeX
+    const newLatex = gen.latex || "";
+
     // UPDATE UI IMMEDIATELY
-    setDraftLatex(gen.latex);
-    setSavedLatex(gen.latex);
+    setDraftLatex(newLatex);
+    setSavedLatex(newLatex);
     setDirty(false);
     setActiveRightTab("preview");
 
     setMessages((m) => replaceLastWorking(m, `Generated. Compiling PDF...`));
 
     // RUN TASKS IN PARALLEL
-    const compilePromise = compileDirect(gen.latex);
-    const savePromise = onMessageSent(gen.latex);
+    const compilePromise = compileDirect(newLatex);
+    const savePromise = onMessageSent(newLatex);
 
     const comp = await compilePromise;
     if (!comp.ok) {
       setMessages((m) => replaceLastWorking(m, `Generated LaTeX, but compilation failed. Use “Fix with AI”.`));
     } else {
-      setCompiledLatex(gen.latex);
+      setCompiledLatex(newLatex);
       setMessages((m) => replaceLastWorking(m, `Done. Preview updated.`));
     }
 
@@ -637,17 +759,63 @@ function WorkspaceContent() {
                 </div>
               )}
               <div className="flex items-center gap-2">
-                <button className="h-10 w-10 rounded-xl border border-white/15 bg-white/10 hover:bg-white/15" title="Attach (next step)" disabled>+</button>
+                <button
+                  onClick={() => document.getElementById("hidden-file-input-project")?.click()}
+                  className="h-10 w-10 flex items-center justify-center rounded-xl border border-white/15 bg-white/10 hover:bg-white/15 text-white/60 hover:text-white transition-colors"
+                  title="Attach file"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+                  </svg>
+                </button>
                 <input
-                  value={projectInput}
-                  onChange={(e) => setProjectInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) projectSend(); }}
-                  className="h-10 flex-1 rounded-xl border border-white/15 bg-black/20 px-3 text-sm outline-none placeholder:text-white/45 text-white"
-                  placeholder="Ask BetterNotes to create…"
+                  type="file"
+                  id="hidden-file-input-project"
+                  multiple
+                  className="hidden"
+                  accept=".jpg,.jpeg,.png,.webp,.pdf,.txt,.md,.csv,.docx"
+                  onChange={handleFileSelect}
                 />
+
+                <div className="flex-1 flex flex-col gap-2">
+                  {/* File Error (Project) */}
+                  {fileError && (
+                    <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg flex items-center justify-between">
+                      <span>{fileError}</span>
+                      <button onClick={() => setFileError("")}><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+                    </div>
+                  )}
+                  {/* File Chips (Project) */}
+                  {files.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {files.map(f => (
+                        <div key={f.id} className="group flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 pl-2 pr-1 py-1.5">
+                          {f.type === 'image' && f.previewUrl ? (
+                            <img src={f.previewUrl} alt="preview" className="w-6 h-6 rounded object-cover border border-white/10" />
+                          ) : (
+                            <div className="w-6 h-6 rounded bg-white/10 flex items-center justify-center text-white/50">
+                              <span className="uppercase text-[9px] font-bold">{f.file.name.split('.').pop()?.slice(0, 3)}</span>
+                            </div>
+                          )}
+                          <span className="text-xs text-white/90 truncate max-w-[100px]" title={f.file.name}>{f.file.name}</span>
+                          <button onClick={() => removeFile(f.id)} className="ml-1 text-white/40 hover:text-red-300"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <input
+                    value={projectInput}
+                    onChange={(e) => setProjectInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) projectSend(); }}
+                    className="h-10 w-full rounded-xl border border-white/15 bg-black/20 px-3 text-sm outline-none placeholder:text-white/45 text-white"
+                    placeholder="Ask BetterNotes to create…"
+                  />
+                </div>
+
                 <button
                   onClick={projectSend}
-                  className={["h-10 rounded-xl px-4 text-sm font-semibold", projectInput.trim().length > 0 && !busy() ? "bg-white text-neutral-950 hover:bg-white/90" : "bg-white/20 text-white/60 cursor-not-allowed"].join(" ")}
+                  className={["h-10 rounded-xl px-4 text-sm font-semibold self-end", projectInput.trim().length > 0 || files.length > 0 && !busy() ? "bg-white text-neutral-950 hover:bg-white/90" : "bg-white/20 text-white/60 cursor-not-allowed"].join(" ")}
                 >
                   {isGenerating ? "Generating…" : isCompiling ? "Compiling…" : isFixing ? "Fixing…" : "Send"}
                 </button>
@@ -728,8 +896,64 @@ function WorkspaceContent() {
         <div className="mt-10 mx-auto max-w-3xl rounded-2xl border border-white/15 bg-white/10 p-3 backdrop-blur">
           <div className="flex items-center gap-2">
             <input ref={inputRef} value={startInput} onChange={(e) => setStartInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) startSend(); }} className="h-10 flex-1 rounded-xl border border-white/15 bg-black/20 px-3 text-sm outline-none placeholder:text-white/45 text-white" placeholder="Ask BetterNotes to create a project that..." />
-            <button data-auto-send onClick={startSend} className={["h-10 rounded-xl px-4 text-sm font-semibold", startInput.trim() && !busy() ? "bg-white text-neutral-950" : "bg-white/20 text-white/60"].join(" ")}>{isGenerating ? "Generating…" : "Send"}</button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => document.getElementById("hidden-file-input-start")?.click()}
+                className="h-10 w-10 flex items-center justify-center rounded-xl border border-white/15 bg-white/5 text-white/60 hover:bg-white/10 hover:text-white transition-colors"
+                title="Attach file"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+                </svg>
+              </button>
+              <button data-auto-send onClick={startSend} className={["h-10 rounded-xl px-4 text-sm font-semibold", startInput.trim() || files.length > 0 ? "bg-white text-neutral-950" : "bg-white/20 text-white/60"].join(" ")}>{isGenerating ? "Generating…" : "Send"}</button>
+            </div>
           </div>
+          <input
+            type="file"
+            id="hidden-file-input-start"
+            multiple
+            className="hidden"
+            accept=".jpg,.jpeg,.png,.webp,.pdf,.txt,.md,.csv,.docx"
+            onChange={handleFileSelect}
+          />
+
+          {/* File Error Feedback */}
+          {fileError && (
+            <div className="mt-2 text-xs text-red-300 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg flex items-center justify-between animate-in fade-in slide-in-from-top-1">
+              <span>{fileError}</span>
+              <button onClick={() => setFileError("")}><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </div>
+          )}
+
+          {/* File Chips */}
+          {files.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {files.map(f => (
+                <div key={f.id} className="group relative flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 pl-2 pr-1 py-1.5 overflow-hidden">
+                  {f.type === 'image' && f.previewUrl ? (
+                    <img src={f.previewUrl} alt="preview" className="w-8 h-8 rounded object-cover border border-white/10" />
+                  ) : (
+                    <div className="w-8 h-8 rounded bg-white/10 flex items-center justify-center text-white/50">
+                      <span className="uppercase text-[10px] font-bold">{f.file.name.split('.').pop()?.slice(0, 3)}</span>
+                    </div>
+                  )}
+                  <div className="flex flex-col min-w-[60px] max-w-[120px]">
+                    <span className="text-xs text-white/90 truncate" title={f.file.name}>{f.file.name}</span>
+                    <span className="text-[10px] text-white/50">{(f.file.size / 1024).toFixed(0)}KB</span>
+                  </div>
+                  <button
+                    onClick={() => removeFile(f.id)}
+                    className="ml-1 p-1 rounded-md text-white/40 hover:text-red-300 hover:bg-white/5 transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
             {/* Selected template chip */}
             {selectedTemplateId && (() => {
