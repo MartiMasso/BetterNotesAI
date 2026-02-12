@@ -18,7 +18,15 @@ const PRICE_PRO = PRICE_PRO_MONTHLY;
 
 type CurrentPlan = "free" | "pro";
 
-export default function PricingClient({ success, canceled }: { success: boolean; canceled: boolean }) {
+export default function PricingClient({
+  success,
+  canceled,
+  sessionId,
+}: {
+  success: boolean;
+  canceled: boolean;
+  sessionId?: string;
+}) {
   const [loadingPlan, setLoadingPlan] = useState<null | "pro">(null);
   const [currentPlan, setCurrentPlan] = useState<CurrentPlan | null>(null);
 
@@ -66,6 +74,41 @@ export default function PricingClient({ success, canceled }: { success: boolean;
     }, 2500);
     return () => clearInterval(interval);
   }, [success, loadCurrentPlan]);
+
+  useEffect(() => {
+    if (!success || !sessionId) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        if (!supabase) return;
+        const { data, error } = await supabase.auth.getUser();
+        if (error) throw error;
+        const user = data?.user;
+        if (!user) return;
+
+        const resp = await fetch(`${API_URL}/stripe/sync-checkout-session`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId,
+            userId: user.id,
+          }),
+        });
+
+        const json = await resp.json().catch(() => null);
+        if (!resp.ok) throw new Error(json?.error ?? "Failed to sync checkout session");
+
+        if (!cancelled) await loadCurrentPlan();
+      } catch (e) {
+        console.warn("Failed to sync checkout session:", e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [success, sessionId, loadCurrentPlan]);
 
   async function startCheckout(priceId: string) {
     try {
@@ -159,7 +202,7 @@ export default function PricingClient({ success, canceled }: { success: boolean;
         <div className="mt-10 grid gap-4 lg:grid-cols-2">
           <PlanCard
             name="Free"
-            price="$0"
+            price="0€"
             tagline="Generous enough to be useful"
             highlight={currentPlan === "free"}
             badge={currentPlan === "free" ? "Current plan" : undefined}
@@ -177,7 +220,7 @@ export default function PricingClient({ success, canceled }: { success: boolean;
 
           <PlanCard
             name="Pro (Student)"
-            price="$15"
+            price="11.99€"
             period="/month"
             tagline="For students who use it every week"
             highlight={currentPlan ? currentPlan === "pro" : true}

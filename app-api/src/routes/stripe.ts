@@ -79,6 +79,10 @@ export function createStripeRouter(deps: StripeDeps) {
         customer: stripeCustomerId,
         line_items: [{ price: priceId, quantity: 1 }],
         allow_promotion_codes: true,
+        metadata: {
+          plan: resolvedPlan,
+          supabase_user_id: userId,
+        },
         subscription_data: {
           metadata: {
             plan: resolvedPlan,
@@ -92,6 +96,128 @@ export function createStripeRouter(deps: StripeDeps) {
       return res.json({ ok: true, url: session.url });
     } catch (e: any) {
       console.error("[stripe/create-checkout-session]", e);
+      return res.status(500).json({ ok: false, error: e.message ?? "Server error" });
+    }
+  });
+
+  // POST /stripe/sync-checkout-session
+  // Fallback sync for local/dev setups where webhooks may be delayed or not forwarded.
+  router.post("/sync-checkout-session", async (req, res) => {
+    try {
+      assertStripeConfigured(deps);
+
+      const { sessionId, userId } = req.body as { sessionId?: string; userId?: string };
+      if (!sessionId || !userId) return res.status(400).json({ ok: false, error: "Missing sessionId or userId." });
+
+      const session = await deps.stripe.checkout.sessions.retrieve(sessionId, {
+        expand: ["subscription"],
+      });
+
+      const stripeCustomerId =
+        typeof session.customer === "string" ? session.customer : (session.customer?.id ?? null);
+      if (!stripeCustomerId) {
+        return res.status(400).json({ ok: false, error: "Checkout session has no customer." });
+      }
+
+      let subscription: Stripe.Subscription | null = null;
+      if (session.subscription) {
+        subscription =
+          typeof session.subscription === "string"
+            ? await deps.stripe.subscriptions.retrieve(session.subscription)
+            : (session.subscription as Stripe.Subscription);
+      }
+      if (!subscription) {
+        return res.status(400).json({ ok: false, error: "Checkout session has no subscription." });
+      }
+
+      const sessionUserId = (session.metadata as any)?.supabase_user_id ?? null;
+      const subUserId = (subscription.metadata as any)?.supabase_user_id ?? null;
+      const ownerUserId = subUserId ?? sessionUserId ?? null;
+      if (ownerUserId && ownerUserId !== userId) {
+        return res.status(403).json({ ok: false, error: "Checkout session does not belong to this user." });
+      }
+
+      const { data: profile, error: pErr } = await deps.supabaseAdmin
+        .from("profiles")
+        .select("stripe_customer_id")
+        .eq("id", userId)
+        .maybeSingle();
+      if (pErr) throw pErr;
+
+      const existingCustomerId = (profile?.stripe_customer_id as string | null) ?? null;
+      if (existingCustomerId && existingCustomerId !== stripeCustomerId) {
+        return res.status(409).json({ ok: false, error: "Customer mismatch for user profile." });
+      }
+
+      const stripeSubscriptionId = subscription.id;
+      const status = subscription.status ?? null;
+      const priceId = subscription.items?.data?.[0]?.price?.id ?? null;
+      const periodEnd = (subscription as any).current_period_end ?? null;
+      const periodEndIso = periodEnd ? new Date(periodEnd * 1000).toISOString() : null;
+
+      const planFromMeta = (subscription.metadata as any)?.plan ?? null;
+      const priceIsPro = deps.priceProId ? priceId === deps.priceProId : null;
+      const resolvedPlan =
+        planFromMeta === "pro"
+          ? deps.priceProId
+            ? priceIsPro
+              ? "pro"
+              : null
+            : "pro"
+          : priceIsPro
+            ? "pro"
+            : null;
+      const shouldSetPro = resolvedPlan === "pro" && (status === "active" || status === "trialing");
+
+      const { data: existing, error: exErr } = await deps.supabaseAdmin
+        .from("subscriptions")
+        .select("id")
+        .eq("stripe_subscription_id", stripeSubscriptionId)
+        .maybeSingle();
+      if (exErr) throw exErr;
+
+      if (existing?.id) {
+        const { error: updErr } = await deps.supabaseAdmin
+          .from("subscriptions")
+          .update({
+            user_id: userId,
+            stripe_customer_id: stripeCustomerId,
+            stripe_subscription_id: stripeSubscriptionId,
+            price_id: priceId,
+            status,
+            current_period_end: periodEndIso,
+          })
+          .eq("id", existing.id);
+        if (updErr) throw updErr;
+      } else {
+        const { error: insErr } = await deps.supabaseAdmin.from("subscriptions").insert({
+          user_id: userId,
+          stripe_customer_id: stripeCustomerId,
+          stripe_subscription_id: stripeSubscriptionId,
+          price_id: priceId,
+          status,
+          current_period_end: periodEndIso,
+        });
+        if (insErr) throw insErr;
+      }
+
+      const profileUpdate: Record<string, any> = {
+        id: userId,
+        stripe_customer_id: stripeCustomerId,
+        stripe_subscription_id: stripeSubscriptionId,
+        subscription_status: status,
+        price_id: priceId,
+        current_period_end: periodEndIso,
+        updated_at: new Date().toISOString(),
+      };
+      if (shouldSetPro) profileUpdate.plan = "pro";
+
+      const { error: profUpErr } = await deps.supabaseAdmin.from("profiles").upsert(profileUpdate);
+      if (profUpErr) throw profUpErr;
+
+      return res.json({ ok: true, synced: true, plan: shouldSetPro ? "pro" : "free", status });
+    } catch (e: any) {
+      console.error("[stripe/sync-checkout-session]", e);
       return res.status(500).json({ ok: false, error: e.message ?? "Server error" });
     }
   });
