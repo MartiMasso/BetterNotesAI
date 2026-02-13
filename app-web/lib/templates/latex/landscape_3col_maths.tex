@@ -1,39 +1,46 @@
 \documentclass[10pt]{article}
 
 % =========================
-% Preamble (from preamble.tex)
+% Preamble (from preamble.tex) — corrected for robustness
 % =========================
 \usepackage[english]{babel}
-\usepackage[utf8]{inputenc}
+\usepackage[utf8]{inputenc} % Keep for pdfLaTeX; remove if using LuaLaTeX/XeLaTeX
 \usepackage[T1]{fontenc}
+
 \usepackage{enumitem}
 \usepackage{booktabs}
+
 \usepackage{amsmath}
+\usepackage{mathtools} % <-- needed for \DeclarePairedDelimiter
 \usepackage{amsthm}
 \usepackage{empheq}
 \usepackage{amssymb}
 \usepackage{amsfonts}
+
 \usepackage{courier}
 \usepackage{lmodern}
 \usepackage{mathrsfs}
 \usepackage{makeidx}
+
 \usepackage{caption}
 \usepackage{lscape}
 \usepackage{xspace}
 \usepackage{xcolor}
 \usepackage{chngcntr}
 \usepackage{geometry}
-\geometry{a4paper, landscape, left = 5mm, right = 5mm, top = 5mm, bottom = 5mm}
+\geometry{a4paper, landscape, left=5mm, right=5mm, top=5mm, bottom=5mm}
+
 \usepackage{hyperref}
 \hypersetup{
     colorlinks=true,
     linkcolor=blue,
     filecolor=magenta,
-    urlcolor=cyan,
+    urlcolor=blue,
     citecolor=black,
 }
+
 \usepackage{multicol}
-\setlength{\columnseprule}{1pt}
+\setlength{\columnseprule}{0.5pt}
 \setlength{\columnsep}{0.5cm}
 
 \usepackage{titlesec}
@@ -44,8 +51,7 @@
 \pagenumbering{gobble}
 \titleformat*{\section}{\large\bfseries}
 \titleformat*{\subsection}{\bfseries}
-\setlength{\columnseprule}{0.5pt}
-\setlength\parindent{0pt}
+
 \makeatletter
 \renewcommand*{\@seccntformat}[1]{\csname the#1\endcsname\hspace{0.25cm}}
 \makeatother
@@ -88,6 +94,9 @@
 \newcommand{\dd}{\mathrm{d}}
 \newcommand{\real}{\mathbb{R}}
 \newcommand{\cplex}{\mathbb{C}}
+\newcommand{\realn}{\mathbb{R}_n}
+\newcommand{\cplexn}{\mathbb{C}_n}
+
 \newcommand{\tens}[1]{\vec{\vec{#1}}}
 \newcommand{\reynolds}{\mathrm{Re}}
 \newcommand{\mach}{\mathrm{Ma}}
@@ -115,14 +124,14 @@
 % Environments (from environments_formulari.tex)
 % =========================
 \newtheoremstyle{normal}
-	{0pt}                % Space above
-	{0pt}                % Space below
-	{\upshape}           % Theorem body font
-	{}                   % Indent amount
-	{\bfseries}          % Theorem head font
-	{}                   % Punctuation after theorem head
-	{ }                  % Space after theorem head
-	{}                   % Theorem head spec
+    {0pt}                % Space above
+    {0pt}                % Space below
+    {\upshape}           % Theorem body font
+    {}                   % Indent amount
+    {\bfseries}          % Theorem head font
+    {}                   % Punctuation after theorem head
+    { }                  % Space after theorem head
+    {}                   % Theorem head spec
 \theoremstyle{normal}
 
 \newtheorem*{definition}{\textcolor{green2}{Def.}}
@@ -136,8 +145,7 @@
 % =========================
 % Main settings (from main.tex)
 % =========================
-\renewcommand{\baselinestretch}{1.2}
-\linespread{0.925}
+\linespread{0.95} % (use a single spacing knob; removed baselinestretch duplication)
 
 \begin{document}
 
@@ -149,159 +157,161 @@
 \section*{Zeros of functions}
 
 \begin{definition}
-	$f \colon I_0 = [a_0, b_0] \rightarrow \real$ with $f(a_0)\, f(b_0) < 0$. Assume $\exists ! \alpha \in I_0$ s.t. $f(\alpha) = 0$.
-	\begin{itemize}[leftmargin=*]
-		\item \underline{Bisection:} sequence of intervals $I_k = [a_k, b_k]$, $x_k = \frac{a_k + b_k}{2}$, if $f(x_k) = 0$ we are done, otherwise
-		\begin{itemize}
-			\item $I_{k+1} = [a_k, x_k]$ if $f(a_k)\, f(x_k) < 0$
-			\item $I_{k+1} = [x_k, b_k]$ if $f(b_k)\, f(x_k) < 0$
-		\end{itemize}
-		If we approximate $\alpha$ by $x_k$, the error is $\abs{E} < \frac{b_0 - a_0}{2^{k+1}}$. Geometric convergence.
-		\item \underline{Secant:} given $(x_{k-1}, f(x_{k-1}))$ and $(x_k, f(x_k))$, let $g(x)$ be the line through them. Take $x_{k+1}$ where $g(x) = 0$,
-		$x_{k+1} = x_{k} - f(x_k) \frac{x_{k+1} - x_k}{f(x_{k+1}) - f(x_k)}$.
-		Not always convergent, faster than bisection.
-		\item \underline{Regula falsi:} $I_k = [x_{k-1}, x_k]$, compute $x_{k+1}$ as in the secant method, choose $I_{k+1}$ as in bisection.
-		Convergent if in $I_1 = [x_0, x_1]$, $f(x_0) f(x_1) < 0$. Slower than secant.
-		\item\underline{ Newton:} given $(x_k, f(x_k))$, let $g(x)$ be the line through the point with slope $f'(x_k)$. Take $x_{k+1}$ where $g(x) = 0$,
-		$x_{k+1} = x_k - \frac{f(x_k)}{f'(x_k)}$. Not always convergent.
-	\end{itemize}
+    $f \colon I_0 = [a_0, b_0] \rightarrow \real$ with $f(a_0)\, f(b_0) < 0$. Assume $\exists ! \alpha \in I_0$ s.t. $f(\alpha) = 0$.
+    \begin{itemize}[leftmargin=*]
+        \item \underline{Bisection:} sequence of intervals $I_k = [a_k, b_k]$, $x_k = \frac{a_k + b_k}{2}$, if $f(x_k) = 0$ we are done, otherwise
+        \begin{itemize}
+            \item $I_{k+1} = [a_k, x_k]$ if $f(a_k)\, f(x_k) < 0$
+            \item $I_{k+1} = [x_k, b_k]$ if $f(b_k)\, f(x_k) < 0$
+        \end{itemize}
+        If we approximate $\alpha$ by $x_k$, the error is $\abs{E} < \frac{b_0 - a_0}{2^{k+1}}$. Geometric convergence.
+        \item \underline{Secant:} given $(x_{k-1}, f(x_{k-1}))$ and $(x_k, f(x_k))$, let $g(x)$ be the line through them. Take $x_{k+1}$ where $g(x) = 0$,
+        \[
+            x_{k+1} = x_k - f(x_k)\,\frac{x_k - x_{k-1}}{f(x_k) - f(x_{k-1})}.
+        \]
+        Not always convergent, faster than bisection.
+        \item \underline{Regula falsi:} $I_k = [x_{k-1}, x_k]$, compute $x_{k+1}$ as in the secant method, choose $I_{k+1}$ as in bisection.
+        Convergent if in $I_1 = [x_0, x_1]$, $f(x_0) f(x_1) < 0$. Slower than secant.
+        \item \underline{Newton:} given $(x_k, f(x_k))$, let $g(x)$ be the line through the point with slope $f'(x_k)$. Take $x_{k+1}$ where $g(x) = 0$,
+        $x_{k+1} = x_k - \frac{f(x_k)}{f'(x_k)}$. Not always convergent.
+    \end{itemize}
 \end{definition}
 
 \begin{theorem}
-	$f \colon [a, b] \rightarrow \real$, class $\mathscr{C}^2$ s.t.:
-	\begin{enumerate}[label=(\roman*), topsep=0pt, leftmargin=*, itemsep=-3pt]
-		\item $f(a) f(b) < 0$
-		\item $f'(x) \neq 0 \ \forall x \in [a, b]$
-		\item $f''(x) \geq 0$ (or $f''(x) \leq 0$) $\forall x \in [a, b]$
-		\item $c \in \{a, b\}$ is where $\abs{f'(x)}$ is smaller $\Rightarrow \abs{\frac{f(c)}{f'(c)}} \leq b - a$
-	\end{enumerate}
-	Then $\exists! \alpha \in [a, b]$ such that $f(\alpha) = 0$ and Newton's method converges to $\alpha$ $\forall x_0 \in [a, b]$.
+    $f \colon [a, b] \rightarrow \real$, class $\mathscr{C}^2$ s.t.:
+    \begin{enumerate}[label=(\roman*), topsep=0pt, leftmargin=*, itemsep=-3pt]
+        \item $f(a) f(b) < 0$
+        \item $f'(x) \neq 0 \ \forall x \in [a, b]$
+        \item $f''(x) \geq 0$ (or $f''(x) \leq 0$) $\forall x \in [a, b]$
+        \item $c \in \{a, b\}$ is where $\abs{f'(x)}$ is smaller $\Rightarrow \abs{\frac{f(c)}{f'(c)}} \leq b - a$
+    \end{enumerate}
+    Then $\exists! \alpha \in [a, b]$ such that $f(\alpha) = 0$ and Newton's method converges to $\alpha$ $\forall x_0 \in [a, b]$.
 \end{theorem}
 
 \begin{definition}
-	$\{ x_k \}_{k \geq 0}$ converging to $\alpha$ has order of convergence at least $p$ if $\exists C > 0, \, N \geq 0$ s.t.
-	$\abs{x_{k+1} - \alpha} \leq C \abs{x_k - \alpha}^p \ \forall k \geq N$.
-	Equivalently, if $\exists \lim_{k \to \infty} \frac{x_{k+1} - \alpha}{(x_k - \alpha)^p}$ we say it has ord. conv. at least $p$.
-	If $p = 1$, we require $L < 1$. $L$ is the asymptotic error constant.
+    $\{ x_k \}_{k \geq 0}$ converging to $\alpha$ has order of convergence at least $p$ if $\exists C > 0, \, N \geq 0$ s.t.
+    $\abs{x_{k+1} - \alpha} \leq C \abs{x_k - \alpha}^p \ \forall k \geq N$.
+    Equivalently, if $\exists \lim_{k \to \infty} \frac{x_{k+1} - \alpha}{(x_k - \alpha)^p}$ we say it has ord.\ conv.\ at least $p$.
+    If $p = 1$, we require $L < 1$. $L$ is the asymptotic error constant.
 \end{definition}
 
 \begin{proposition}
-	Iteration $x_{k+1} = g(x_k)$, $s$ a fixed point. If $g \in \mathscr{C}^\infty(s - \varepsilon, s + \varepsilon)$, $g^{(j)}(s) = 0$ for $j = 0 \div p-1$ and $g^{(p)}(s) \neq 0$, then $\{ x_k \}_{k \geq 0}$ converges with order $p$.
+    Iteration $x_{k+1} = g(x_k)$, $s$ a fixed point. If $g \in \mathscr{C}^\infty(s - \varepsilon, s + \varepsilon)$, $g^{(j)}(s) = 0$ for $j = 0 \div p-1$ and $g^{(p)}(s) \neq 0$, then $\{ x_k \}_{k \geq 0}$ converges with order $p$.
 \end{proposition}
 
 \begin{obs}[Aitken acceleration]
-	Assume $x_k \to s$. Define $\Delta x_k \coloneqq x_{k+1} - x_k$, $\Delta^2 x_k \coloneqq \Delta x_{k+1} - \Delta x_k$.
-	Let $g(x)$ be the line through $(x_k, \Delta x_k)$, $(x_{k+1}, \Delta x_{k+1})$. Take $x_k'$ where $g(x) = 0$,
-	$x_k' = x_k - \frac{(\Delta x_k)^2}{\Delta^2 x_k}$.
+    Assume $x_k \to s$. Define $\Delta x_k \coloneqq x_{k+1} - x_k$, $\Delta^2 x_k \coloneqq \Delta x_{k+1} - \Delta x_k$.
+    Let $g(x)$ be the line through $(x_k, \Delta x_k)$, $(x_{k+1}, \Delta x_{k+1})$. Take $x_k'$ where $g(x) = 0$,
+    $x_k' = x_k - \frac{(\Delta x_k)^2}{\Delta^2 x_k}$.
 \end{obs}
 
 \begin{proposition}
-	Assume $\lim_{k\to\infty} x_k = s$, $x_k \neq 0 \ \forall k$, and $\exists C$, $\abs{C} < 1$ s.t.
-	$x_{k+1} - s = (C + \delta_k)(x_k - s)$, with $\lim_{k\to\infty} \delta_k = 0$.
-	Then $\{x_k'\}_{k\geq0}$ is well-defined for $k$ large enough and
-	$\lim_{k\to\infty} \frac{x_k' - s}{x_k - s} = 0 \Rightarrow \{x_k'\}_{k\geq0}$ converges faster than $\{x_k\}_{k\geq0}$.
+    Assume $\lim_{k\to\infty} x_k = s$, $x_k \neq 0 \ \forall k$, and $\exists C$, $\abs{C} < 1$ s.t.
+    $x_{k+1} - s = (C + \delta_k)(x_k - s)$, with $\lim_{k\to\infty} \delta_k = 0$.
+    Then $\{x_k'\}_{k\geq0}$ is well-defined for $k$ large enough and
+    $\lim_{k\to\infty} \frac{x_k' - s}{x_k - s} = 0 \Rightarrow \{x_k'\}_{k\geq0}$ converges faster than $\{x_k\}_{k\geq0}$.
 \end{proposition}
 
 \begin{proposition}[Steffensen acceleration]
-	$g \colon [a,b] \rightarrow \real$ of class $\mathscr{C}^2$, $s \in [a,b]$ with $s = g(s)$ and $g'(s) \neq 1$.
-	Let $G(x) = x - \frac{(g(x)-x)^2}{g(g(x)) - 2 g(x) + x}$.
-	If $x_{k+1} = g(x_k)$ conv. at least linearly to $s$, then $y_{k+1} = G(y_k)$ conv. at least quadratically to $s$.
-	If $x_{k+1} = g(x_k)$ conv. with order $p > 1$, then $y_{k+1} = G(y_k)$ conv. with order $2p-1$.
+    $g \colon [a,b] \rightarrow \real$ of class $\mathscr{C}^2$, $s \in [a,b]$ with $s = g(s)$ and $g'(s) \neq 1$.
+    Let $G(x) = x - \frac{(g(x)-x)^2}{g(g(x)) - 2 g(x) + x}$.
+    If $x_{k+1} = g(x_k)$ conv.\ at least linearly to $s$, then $y_{k+1} = G(y_k)$ conv.\ at least quadratically to $s$.
+    If $x_{k+1} = g(x_k)$ conv.\ with order $p > 1$, then $y_{k+1} = G(y_k)$ conv.\ with order $2p-1$.
 \end{proposition}
 
 \begin{obs}
-	Aitken works on the original sequence, Steffensen builds the accelerated sequence.
+    Aitken works on the original sequence, Steffensen builds the accelerated sequence.
 \end{obs}
 
 \begin{theorem}[Fixed point]
-	$T \subset \real^n$ closed, $G \colon T \rightarrow \real^n$ s.t.:
-	\begin{enumerate}[label=(\roman*), topsep=0pt, leftmargin=*, itemsep=-3pt]
-		\item $G(T) \subset T$ (contractive)
-		\item $\exists L \in (0,1)$ constant s.t. $\norm{G(x_1) - G(x_2)} \leq L \norm{x_1 - x_2}$ $\forall x_1, x_2 \in T$ (Lipschitz).
-	\end{enumerate}
-	Then:
-	\begin{enumerate}[label=(\alph*), topsep=0pt, leftmargin=*, itemsep=-3pt]
-		\item $\exists ! s \in I$ s.t. $s = G(x)$ (unique fixed point)
-		\item $\forall x_0 \in T$, $\{ x_{k+1} \}_{k \geq 0} = \{ G(x_k) \}_{k \geq 0}$ converges to $s$.
-		\item $\norm{x_k - s} \leq \frac{L^k}{1 - L} \norm{x_1 - x_0}$,
-		$\norm{x_k - s} \leq \frac{L}{1 - L} \norm{x_k - x_{k-1}}$
-	\end{enumerate}
+    $T \subset \real^n$ closed, $G \colon T \rightarrow \real^n$ s.t.:
+    \begin{enumerate}[label=(\roman*), topsep=0pt, leftmargin=*, itemsep=-3pt]
+        \item $G(T) \subset T$ (contractive)
+        \item $\exists L \in (0,1)$ constant s.t. $\norm{G(x_1) - G(x_2)} \leq L \norm{x_1 - x_2}$ $\forall x_1, x_2 \in T$ (Lipschitz).
+    \end{enumerate}
+    Then:
+    \begin{enumerate}[label=(\alph*), topsep=0pt, leftmargin=*, itemsep=-3pt]
+        \item $\exists ! s \in I$ s.t. $s = G(x)$ (unique fixed point)
+        \item $\forall x_0 \in T$, $\{ x_{k+1} \}_{k \geq 0} = \{ G(x_k) \}_{k \geq 0}$ converges to $s$.
+        \item $\norm{x_k - s} \leq \frac{L^k}{1 - L} \norm{x_1 - x_0}$,
+        $\norm{x_k - s} \leq \frac{L}{1 - L} \norm{x_k - x_{k-1}}$
+    \end{enumerate}
 \end{theorem}
 
 \begin{obs}[Newton for nonlinear systems]
-	Let $f \colon \real^n \to \real^n$, given $x_k \in \real^n$, take Taylor $f(x) \approx f(x_k) + D f(x_k) (x - x_k)$.
-	Let $\Delta x_k = x_{k+1} - x_{k}$, choose $x_{k+1}$ s.t. $f(x) = 0$.
-	Then solve $D f(x_k) \Delta x_k = -f(x_k)$ and $x_{k+1} = x_k + \Delta x_k$.
+    Let $f \colon \real^n \to \real^n$, given $x_k \in \real^n$, take Taylor $f(x) \approx f(x_k) + D f(x_k) (x - x_k)$.
+    Let $\Delta x_k = x_{k+1} - x_{k}$, choose $x_{k+1}$ s.t. $f(x) = 0$.
+    Then solve $D f(x_k) \Delta x_k = -f(x_k)$ and $x_{k+1} = x_k + \Delta x_k$.
 \end{obs}
 
 \begin{obs}
-	If $p(x) \in \real_n[x]$, we write $p(x) = \sum_{k=0}^n a_{k} x^{n-k}$.
+    If $p(x) \in \realn[x]$, we write $p(x) = \sum_{k=0}^n a_{k} x^{n-k}$.
 \end{obs}
 
 \begin{obs}[Horner's rule]
-	Let $p(x) = \sum_{k=0}^n a_{k} x^{n-k}$, group it as
-	$p(x) = ( \cdots (a_0 x + a_1) x + a_2) x + \cdots a_{n-2}) x + a_{n-1}) x + a_n$.
-	We want $p(\alpha)$. Define $b_0 = a_0$, $b_i = b_{i-1} \alpha + a_i, \ i = 1 \div n$. Then $p(\alpha) = b_n$.
+    Let $p(x) = \sum_{k=0}^n a_{k} x^{n-k}$, group it as
+    $p(x) = ( \cdots (a_0 x + a_1) x + a_2) x + \cdots a_{n-2}) x + a_{n-1}) x + a_n$.
+    We want $p(\alpha)$. Define $b_0 = a_0$, $b_i = b_{i-1} \alpha + a_i, \ i = 1 \div n$. Then $p(\alpha) = b_n$.
 \end{obs}
 
 \begin{obs}[Synthetic division]
-	Horner's rule performs the division of $p(x)$ by $x - \alpha$,
-	$p(x) = (x-\alpha) q(x) + r_p$ where
-	$q(x) = \sum_{k=0}^{n-1} b_k x^{n-1-k}$ and $r_p = b_n = p(\alpha)$.
+    Horner's rule performs the division of $p(x)$ by $x - \alpha$,
+    $p(x) = (x-\alpha) q(x) + r_p$ where
+    $q(x) = \sum_{k=0}^{n-1} b_k x^{n-1-k}$ and $r_p = b_n = p(\alpha)$.
 \end{obs}
 
 \begin{obs}[Derivatives at $\alpha$]
-	Expand $p$ in Taylor around $\alpha$,
-	$p(x) = p(\alpha) + p'(\alpha) (x - \alpha) + \cdots \frac{p^{(n)}(\alpha)}{n!} (x - \alpha)^n$.
-	Then
-	$q(x) = \frac{p(x) - p(\alpha)}{x - \alpha}
-	= p'(\alpha) + (x - \alpha) \sum_{j=2}^{n} \frac{p^{(j)}(\alpha)}{j!} (x - \alpha)^{j-2}$.
-	Synthetic division of $q(x) \Rightarrow q(x) = (x - \alpha) \sum_{k = 0}^{n-2} c_{k} x^{n-2-k} + c_{n-1}$ and
-	$q(\alpha) = p'(\alpha) = c_{n-1}$.
-	Iterate:
-	\vspace*{-8pt}
-	\[
-		\begin{aligned}
-			b_0 &= a_0 & b_i &= b_{i-1} \alpha + a_i & i &= 1 \div n 	& p(\alpha) 	&= b_n 			\\
-			c_0 &= b_0 & c_i &= c_{i-1} \alpha + b_i & i &= 1 \div n-1 	& p'(\alpha) 	&= c_{n-1}		\\
-			d_0 &= c_0 & d_i &= d_{i-1} \alpha + c_i & i &= 1 \div n-2 	& p''(\alpha) 	&= 2! \, d_{n-2}	\\
-			e_0 &= d_0 & e_i &= e_{i-1} \alpha + d_i & i &= 1 \div n-3 	& p'''(\alpha)  &= 3! \, e_{n-3} \\
-		\end{aligned}
-	\]
-	\vspace*{-13pt}
+    Expand $p$ in Taylor around $\alpha$,
+    $p(x) = p(\alpha) + p'(\alpha) (x - \alpha) + \cdots \frac{p^{(n)}(\alpha)}{n!} (x - \alpha)^n$.
+    Then
+    $q(x) = \frac{p(x) - p(\alpha)}{x - \alpha}
+    = p'(\alpha) + (x - \alpha) \sum_{j=2}^{n} \frac{p^{(j)}(\alpha)}{j!} (x - \alpha)^{j-2}$.
+    Synthetic division of $q(x) \Rightarrow q(x) = (x - \alpha) \sum_{k = 0}^{n-2} c_{k} x^{n-2-k} + c_{n-1}$ and
+    $q(\alpha) = p'(\alpha) = c_{n-1}$.
+    Iterate:
+    \vspace*{-8pt}
+    \[
+        \begin{aligned}
+            b_0 &= a_0 & b_i &= b_{i-1} \alpha + a_i & i &= 1 \div n    & p(\alpha)     &= b_n          \\
+            c_0 &= b_0 & c_i &= c_{i-1} \alpha + b_i & i &= 1 \div n-1  & p'(\alpha)     &= c_{n-1}      \\
+            d_0 &= c_0 & d_i &= d_{i-1} \alpha + c_i & i &= 1 \div n-2  & p''(\alpha)    &= 2! \, d_{n-2} \\
+            e_0 &= d_0 & e_i &= e_{i-1} \alpha + d_i & i &= 1 \div n-3  & p'''(\alpha)   &= 3! \, e_{n-3} \\
+        \end{aligned}
+    \]
+    \vspace*{-13pt}
 \end{obs}
 
 \begin{proposition}[Laguerre's rule]
-	Let $L > 0$ and perform synthetic division of $p(x)$ by $x - L$,
-	$p(x) = (x - L) \sum_{k=0}^{n-1} b_k x^{n-1-k} + b_n$.
-	If $b_i > 0$ (or $b_i < 0$) $\forall i$, then $L$ is an upper bound for the real roots of $p(x)$.
+    Let $L > 0$ and perform synthetic division of $p(x)$ by $x - L$,
+    $p(x) = (x - L) \sum_{k=0}^{n-1} b_k x^{n-1-k} + b_n$.
+    If $b_i > 0$ (or $b_i < 0$) $\forall i$, then $L$ is an upper bound for the real roots of $p(x)$.
 \end{proposition}
 
 \begin{proposition}[Newton's rule]
-	If $p(x) \in \real_n[x]$ and $L \in \real$ satisfies that $p(L), \ p'(L), \ldots, p^{(n)}(L)$ are positive (or negative),
-	then $L$ is an upper bound for the real roots of $p(x)$.
+    If $p(x) \in \realn[x]$ and $L \in \real$ satisfies that $p(L), \ p'(L), \ldots, p^{(n)}(L)$ are positive (or negative),
+    then $L$ is an upper bound for the real roots of $p(x)$.
 \end{proposition}
 
 \begin{proposition}
-	Let $p(x) \in \cplex_n[x]$ and $z \in \cplex$ be a root of $p(x)$. Then
-	$\abs{z} \leq \max\left\{1, \sum_{i=1}^{n} \abs{\frac{a_i}{a_0}}\right\}$.
+    Let $p(x) \in \cplexn[x]$ and $z \in \cplex$ be a root of $p(x)$. Then
+    $\abs{z} \leq \max\left\{1, \sum_{i=1}^{n} \abs{\frac{a_i}{a_0}}\right\}$.
 \end{proposition}
 
 \begin{proposition}
-	Let $p(x) \in \cplex_n[x]$ and $z \in \cplex$ be a root of $p(x)$. Then
-	$\abs{z} \leq 1 + \max \left\{ \abs{\frac{a_1}{a_0}}, \cdots, \abs{\frac{a_{n-1}}{a_0}} \right\}$.
+    Let $p(x) \in \cplexn[x]$ and $z \in \cplex$ be a root of $p(x)$. Then
+    $\abs{z} \leq 1 + \max \left\{ \abs{\frac{a_1}{a_0}}, \cdots, \abs{\frac{a_{n-1}}{a_0}} \right\}$.
 \end{proposition}
 
 \begin{obs}
-	Bounds for other real roots of $p(x)$:
-	\begin{itemize}[leftmargin=*]
-		\item Lower bound for positive roots: $\overline{p}(x) \coloneqq p\left(\frac{1}{x}\right)$, $x \neq 0$.
-		$\overline{L} > 0$ upper bound for positive real roots of $\overline{p}(x) \Rightarrow \frac{1}{\overline{L}}$ lower bound for positive real roots of $p(x)$.
-		\item Lower bound for negative roots: $\overline{p}(x) \coloneqq p(-x)$.
-		$\overline{L} > 0$ upper bound for real roots of $\overline{p}(x) \Rightarrow -\overline{L}$ lower bound for negative real roots of $p(x)$.
-		\item Upper bound for negative roots: $\overline{p}(x) \coloneqq p\left(-\frac{1}{x}\right)$.
-		$\overline{L} > 0$ upper bound for real roots of $\overline{p}(x) \Rightarrow -\frac{1}{\overline{L}}$ upper bound for negative real roots of $p(x)$.
-	\end{itemize}
+    Bounds for other real roots of $p(x)$:
+    \begin{itemize}[leftmargin=*]
+        \item Lower bound for positive roots: $\overline{p}(x) \coloneqq p\left(\frac{1}{x}\right)$, $x \neq 0$.
+        $\overline{L} > 0$ upper bound for positive real roots of $\overline{p}(x) \Rightarrow \frac{1}{\overline{L}}$ lower bound for positive real roots of $p(x)$.
+        \item Lower bound for negative roots: $\overline{p}(x) \coloneqq p(-x)$.
+        $\overline{L} > 0$ upper bound for real roots of $\overline{p}(x) \Rightarrow -\overline{L}$ lower bound for negative real roots of $p(x)$.
+        \item Upper bound for negative roots: $\overline{p}(x) \coloneqq p\left(-\frac{1}{x}\right)$.
+        $\overline{L} > 0$ upper bound for real roots of $p(x) \Rightarrow -\frac{1}{\overline{L}}$ upper bound for negative real roots of $p(x)$.
+    \end{itemize}
 \end{obs}
 
 % =========================
@@ -312,55 +322,52 @@
 Grid $(x_k, f_k)$, $k = 0 \div n$ of $n+1$ points, $x_i \neq x_j \ \forall i \neq j$
 
 \begin{theorem}[Existence and uniqueness]
-	$\exists! \, p_n(x)$ polynomial of degree $\leq n$ that interpolates $(x_k, f_k)$, \ie $p_n(x_k) = f_k, \, k = 0 \div n$.
-	Idea: $p_n(x) = \sum_{i=0}^{n} \left( C_i \prod_{j=0}^{i-1} (x-x_j) \right)$.
+    $\exists! \, p_n(x)$ polynomial of degree $\leq n$ that interpolates $(x_k, f_k)$, \ie $p_n(x_k) = f_k, \, k = 0 \div n$.
+    Idea: $p_n(x) = \sum_{i=0}^{n} \left( C_i \prod_{j=0}^{i-1} (x-x_j) \right)$.
 \end{theorem}
 
-\begin{definition}
-	$\generated{x_0, \ldots, x_n} \coloneqq (\min{\{x_0, \ldots, x_n\}}, \max{\{x_0, \ldots, x_n\}})$.
-\end{definition}
 
 \begin{theorem}[Error formula]
-	If $f \in \mathscr{C}^{n+1}(a, b)$, $x_k \in (a, b)\ k = 0 \div n$ and $p_n(x)$ is the interpolating polynomial, then
-	$f(x) - p_n(x) = \frac{f^{(n+1)}(\xi(x))}{(n+1)!} (x-x_0) \ldots (x-x_n)$ with $\xi(x) \in \generated{x_0, \ldots, x_n, x}$.
+    If $f \in \mathscr{C}^{n+1}(a, b)$, $x_k \in (a, b)\ k = 0 \div n$ and $p_n(x)$ is the interpolating polynomial, then
+    $f(x) - p_n(x) = \frac{f^{(n+1)}(\xi(x))}{(n+1)!} (x-x_0) \ldots (x-x_n)$ with $\xi(x) \in \generated{x_0, \ldots, x_n, x}$.
 \end{theorem}
 
 \begin{definition}[Lagrange pol.]
-	$\ell_k(x) = \prod_{i \neq k} (x - x_i) \big/ \prod_{i \neq k} (x_k - x_i)$, where $\ell_k(x_j) = \delta_{jk}$.
+    $\ell_k(x) = \prod_{i \neq k} (x - x_i) \big/ \prod_{i \neq k} (x_k - x_i)$, where $\ell_k(x_j) = \delta_{jk}$.
 \end{definition}
 
 \begin{obs}[Lagrange method]
-	If $p_n(x)$ is the interpolating polynomial of $(x_k, f_k)$ with $k = 0 \div n$, then
-	$p_n(x) = \sum_{k=0}^n f_k \ell_k(x)$.
+    If $p_n(x)$ is the interpolating polynomial of $(x_k, f_k)$ with $k = 0 \div n$, then
+    $p_n(x) = \sum_{k=0}^n f_k \ell_k(x)$.
 \end{obs}
 
 \begin{definition}
-	Grid $(x_k, f_k)$ with $k = 0 \div n$, define $f[x_i] \coloneqq f_i$ and
-	$f[x_i, \ldots, x_{i+j+1}] =
-	\frac{f[x_{i+1}, \ldots, x_{i+j}, x_{i+j+1}] - f[x_i, x_{i+1}, \ldots, x_{i+j}]}{x_{i+j+1} - x_i}$.
+    Grid $(x_k, f_k)$ with $k = 0 \div n$, define $f[x_i] \coloneqq f_i$ and
+    $f[x_i, \ldots, x_{i+j+1}] =
+    \frac{f[x_{i+1}, \ldots, x_{i+j}, x_{i+j+1}] - f[x_i, x_{i+1}, \ldots, x_{i+j}]}{x_{i+j+1} - x_i}$.
 \end{definition}
 
 \begin{obs}[Newton method]
-	If $p_n(x)$ is the interpolating polynomial of $(x_k, f_k)$ with $k = 0 \div n$, then
-	$C_i = f[x_0, \ldots, x_i]\ i = 0 \ldots n$ and
-	$p_n(x) = \sum_{i=0}^{n} \left( C_i \prod_{j=0}^{i-1} (x-x_j) \right)$.
+    If $p_n(x)$ is the interpolating polynomial of $(x_k, f_k)$ with $k = 0 \div n$, then
+    $C_i = f[x_0, \ldots, x_i]\ i = 0 \ldots n$ and
+    $p_n(x) = \sum_{i=0}^{n} \left( C_i \prod_{j=0}^{i-1} (x-x_j) \right)$.
 \end{obs}
 
 \begin{proposition}
-	$\forall \sigma \in S_{j+1}$ permutation of the symmetric group of degree $j+1$,
-	$f[x_0, \ldots, x_j] = f[x_{\sigma(0)}, \ldots, x_{\sigma(j)}]$.
+    $\forall \sigma \in S_{j+1}$ permutation of the symmetric group of degree $j+1$,
+    $f[x_0, \ldots, x_j] = f[x_{\sigma(0)}, \ldots, x_{\sigma(j)}]$.
 \end{proposition}
 
 \begin{definition}
-	Grid $(x_k, f_k)\ k = 0 \div n$, define $\Delta^0 f(x_k) = f(x_k)$,
-	$\Delta f(x_k) = f(x_{k+1}) - f(x_k)$,
-	$\Delta (f(x_i) - f(x_k)) = \Delta f(x_i) - \Delta f(x_k)$, \ldots,
-	$\Delta^n f(x_{k}) = \Delta^{n-1} (\Delta f(x_k))$.
+    Grid $(x_k, f_k)\ k = 0 \div n$, define $\Delta^0 f(x_k) = f(x_k)$,
+    $\Delta f(x_k) = f(x_{k+1}) - f(x_k)$,
+    $\Delta (f(x_i) - f(x_k)) = \Delta f(x_i) - \Delta f(x_k)$, \ldots,
+    $\Delta^n f(x_{k}) = \Delta^{n-1} (\Delta f(x_k))$.
 \end{definition}
 
 \begin{proposition}
-	If $h \in \real$ and we have the equally spaced grid $\{ x_0, \ x_1 = x_0 + h, \ \ldots, x_n = x_0 + n h\}$, then
-	$f[x_0,\ldots,x_k] = \frac{1}{k! h^k} \Delta^k f(x_0)$.
+    If $h \in \real$ and we have the equally spaced grid $\{ x_0, \ x_1 = x_0 + h, \ \ldots, x_n = x_0 + n h\}$, then
+    $f[x_0,\ldots,x_k] = \frac{1}{k! h^k} \Delta^k f(x_0)$.
 \end{proposition}
 
 \subsection*{Inverse interpolation}
@@ -374,42 +381,42 @@ From the error formula,
 \setlength{\jot}{-7pt}
 \[
     \vspace{-10pt}
-	\begin{aligned}
-		&\max_{x \in [a,b]}{\abs{f(x) - p_n(x)}} \leq \\
-		\leq &\max_{x \in [a,b]}{ \left\{ \frac{\abs{f^{(n+1)}(x)}}{(n+1)!} \right\}} \cdot
-		\max_{x \in [a,b]}{ \abs{ \prod_{i=0}^n (x - x_i)  } }
-	\end{aligned}
+    \begin{aligned}
+        &\max_{x \in [a,b]}{\abs{f(x) - p_n(x)}} \leq \\
+        \leq &\max_{x \in [a,b]}{ \left\{ \frac{\abs{f^{(n+1)}(x)}}{(n+1)!} \right\}} \cdot
+        \max_{x \in [a,b]}{ \abs{ \prod_{i=0}^n (x - x_i)  } }
+    \end{aligned}
 \]
 \egroup
 We want to minimize $\max_{x \in [a,b]}{ \abs{x - x_0} \cdots \abs{x - x_n}}$.
 
 \begin{theorem}
-	The best choice of $y_0, \ldots, y_n \in [-1, 1]$ to minimize
-	$\max_{y \in [a,b]}{ \abs{y - y_0} \cdots \abs{y - y_n}}$
-	is given by the roots of the Chebyshev polynomials of degree $n+1$ and equals $\frac{1}{2^n}$.
+    The best choice of $y_0, \ldots, y_n \in [-1, 1]$ to minimize
+    $\max_{y \in [a,b]}{ \abs{y - y_0} \cdots \abs{y - y_n}}$
+    is given by the roots of the Chebyshev polynomials of degree $n+1$ and equals $\frac{1}{2^n}$.
 \end{theorem}
 
 \begin{definition}
- 	Chebyshev pol. degree $n$: $T_n(x) = \cos(n \arccos(x))$.
+    Chebyshev pol.\ degree $n$: $T_n(x) = \cos(n \arccos(x))$.
 \end{definition}
 
 \begin{proposition}
-	For Chebyshev polynomials:
-	\begin{enumerate}[label=(\roman*), topsep=0pt, leftmargin=*, itemsep=-3pt]
-		\item $T_0(x) = 1$, $T_1(x) = x$, $T_{n+1}(x) = 2 x T_n(x) - T_{n-1}(x)$
-		\item Coefficient of $x^n$ in $T_n(x)$ is $2^{n-1}$
-		\item $T_n(x),\ n \geq 1$ has $n$ zeros in $[-1, 1]$, of the form
-		$x_k = \cos{\left(\frac{2k+1}{2} \frac{\pi}{2}\right)}\ k = 0 \div n-1$
-		\item $T_n(x),\ n \geq 1$ has $n+1$ extrema in $[-1, 1]$, of the form
-		$\overline{x}_k = \cos{\left(\frac{k\pi}{n}\right)}\ k = 0 \div n$, $T_n(\overline{x}_k) = (-1)^k$.
-	\end{enumerate}
+    For Chebyshev polynomials:
+    \begin{enumerate}[label=(\roman*), topsep=0pt, leftmargin=*, itemsep=-3pt]
+        \item $T_0(x) = 1$, $T_1(x) = x$, $T_{n+1}(x) = 2 x T_n(x) - T_{n-1}(x)$
+        \item Coefficient of $x^n$ in $T_n(x)$ is $2^{n-1}$
+        \item $T_n(x),\ n \geq 1$ has $n$ zeros in $[-1, 1]$, of the form
+        $x_k = \cos{\left(\frac{2k+1}{2} \frac{\pi}{2}\right)}\ k = 0 \div n-1$
+        \item $T_n(x),\ n \geq 1$ has $n+1$ extrema in $[-1, 1]$, of the form
+        $\overline{x}_k = \cos{\left(\frac{k\pi}{n}\right)}\ k = 0 \div n$, $T_n(\overline{x}_k) = (-1)^k$.
+    \end{enumerate}
 \end{proposition}
 
 \begin{theorem}
-	Let $P_{n+1} = \sum_{i=0}^{n+1} a_i x^i$ be any monic polynomial of degree $n+1$ and
-	$m = \max_{x \in [-1,1]}{\abs{P_{n+1}(x)}}$.
-	Then $\frac{T_{n+1}(x)}{2^{n}}$ is monic of degree $n+1$ and minimizes $m$, and
-	$\min_{P_{n+1}(x)} m = \frac{1}{2^n}$.
+    Let $P_{n+1} = \sum_{i=0}^{n+1} a_i x^i$ be any monic polynomial of degree $n+1$ and
+    $m = \max_{x \in [-1,1]}{\abs{P_{n+1}(x)}}$.
+    Then $\frac{T_{n+1}(x)}{2^{n}}$ is monic of degree $n+1$ and minimizes $m$, and
+    $\min_{P_{n+1}(x)} m = \frac{1}{2^n}$.
 \end{theorem}
 
 \subsection*{Hermite interpolation}
@@ -417,34 +424,34 @@ We want to minimize $\max_{x \in [a,b]}{ \abs{x - x_0} \cdots \abs{x - x_n}}$.
 Goal: find a polynomial matching $f(x)$ and $f'(x)$ on the grid $(x_k, f_k),\ (x_k, f_k')\ k = 0 \div m$.
 
 \begin{proposition}
-	The unique polynomial interpolating $f(x)$ and $f'(x)$ at $(x_k, f_k),\ (x_k, f_k')\ k = 0 \div m$
-	is the Hermite polynomial of degree $2m+1$,
-	$H_{2m+1}(x) = \sum_{i=0}^m f_i \phi_i(x) + \sum_{i=0}^m f_i \psi_i(x)$ where:
-	\begin{enumerate}[label=(\roman*), topsep=0pt, leftmargin=*, itemsep=-3pt]
-		\item $\phi_i(x) = \left[ 1 - 2 \ell_i'(x_i) (x - x_i) \right] \ell_i^2(x)$
-		\item $\psi_i(x) = (x - x_i) \ell_i^2(x)$
-	\end{enumerate}
-	with $\ell_i(x)$ the Lagrange interpolating polynomial of degree $m$.
+    The unique polynomial interpolating $f(x)$ and $f'(x)$ at $(x_k, f_k),\ (x_k, f_k')\ k = 0 \div m$
+    is the Hermite polynomial of degree $2m+1$,
+    $H_{2m+1}(x) = \sum_{i=0}^m f_i \phi_i(x) + \sum_{i=0}^m f_i \psi_i(x)$ where:
+    \begin{enumerate}[label=(\roman*), topsep=0pt, leftmargin=*, itemsep=-3pt]
+        \item $\phi_i(x) = \left[ 1 - 2 \ell_i'(x_i) (x - x_i) \right] \ell_i^2(x)$
+        \item $\psi_i(x) = (x - x_i) \ell_i^2(x)$
+    \end{enumerate}
+    with $\ell_i(x)$ the Lagrange interpolating polynomial of degree $m$.
 \end{proposition}
 
 \begin{proposition}[Error formula]
-	$I \subset \real$ and $f \in \mathscr{C}^{2m+2}(I)$ with $x_k \in I$ for $k = 0 \div m$.
-	$f(x) - H_{2m+1}(x) = \frac{f^{(2m+2)}(\xi(x))}{(2m+2)!} (x-x_0)^2 \cdots (x-x_m)^2 \ \forall x \in I$
-	with $\xi(x) \in \generated{x_0, \ldots, x_m, x}$.
+    $I \subset \real$ and $f \in \mathscr{C}^{2m+2}(I)$ with $x_k \in I$ for $k = 0 \div m$.
+    $f(x) - H_{2m+1}(x) = \frac{f^{(2m+2)}(\xi(x))}{(2m+2)!} (x-x_0)^2 \cdots (x-x_m)^2 \ \forall x \in I$
+    with $\xi(x) \in \generated{x_0, \ldots, x_m, x}$.
 \end{proposition}
 
 \begin{definition}[Generalized divided differences]
-	Given $x_i$ and $f$, $\lim_{x \to x_i} f[x_i, x] = \lim_{x \to x_i} \frac{f(x) - f(x_i)}{x - x_i} = f'(x_i) = f[x_i, x_i]$.
+    Given $x_i$ and $f$, $\lim_{x \to x_i} f[x_i, x] = \lim_{x \to x_i} \frac{f(x) - f(x_i)}{x - x_i} = f'(x_i) = f[x_i, x_i]$.
 \end{definition}
 
 \begin{proposition}
-	Computation scheme for $H_{2m+1}(x)$:
-	\vspace*{-8pt}
-	\begin{align*}
-		& H_{2m+1}(x) = f_0 + f[x_0,x_0](x-x_0) + f[x_0,x_0,x_1](x-x_0)^2 + \\
-		& + f[x_0,x_0,x_1,x_1](x-x_0)^2(x-x_1) + \ldots \\
-		& + f[x_0,x_0,...,x_m,x_m](x-x_0)^2 \cdots (x-x_{m-1})^2(x-x_m)
-	\end{align*}
+    Computation scheme for $H_{2m+1}(x)$:
+    \vspace*{-8pt}
+    \begin{align*}
+        & H_{2m+1}(x) = f_0 + f[x_0,x_0](x-x_0) + f[x_0,x_0,x_1](x-x_0)^2 + \\
+        & + f[x_0,x_0,x_1,x_1](x-x_0)^2(x-x_1) + \ldots \\
+        & + f[x_0,x_0,...,x_m,x_m](x-x_0)^2 \cdots (x-x_{m-1})^2(x-x_m)
+    \end{align*}
 \end{proposition}
 \vspace*{-8pt}
 
@@ -453,62 +460,62 @@ Goal: find a polynomial matching $f(x)$ and $f'(x)$ on the grid $(x_k, f_k),\ (x
 Set of points $x_0 < x_1 < \cdots < x_n$ and $f_k = f(x_k)\ k = 0 \div n$.
 
 \begin{definition}
-	A spline $s(x)$ of degree $p$ interpolating $f$ at the nodes $x_i\ i = 0 \div n$ satisfies:
-	\begin{enumerate}[label=(\roman*), topsep=0pt, leftmargin=*, itemsep=-3pt]
-		\item Interpolates: $s(x_i) = f_i\ i = 0 \div n$
-		\item $\forall [x_i, x_{i+1}]\ i = 0 \div n-1$, $s(x)$ is a polynomial of degree $p$
-		\item $s(x) \in \mathscr{C}^{p-1}([x_0, x_n])$
-	\end{enumerate}
-	In practice, natural cubic splines are used $(s''(x_0) = s''(x_n) = 0)$.
+    A spline $s(x)$ of degree $p$ interpolating $f$ at the nodes $x_i\ i = 0 \div n$ satisfies:
+    \begin{enumerate}[label=(\roman*), topsep=0pt, leftmargin=*, itemsep=-3pt]
+        \item Interpolates: $s(x_i) = f_i\ i = 0 \div n$
+        \item $\forall [x_i, x_{i+1}]\ i = 0 \div n-1$, $s(x)$ is a polynomial of degree $p$
+        \item $s(x) \in \mathscr{C}^{p-1}([x_0, x_n])$
+    \end{enumerate}
+    In practice, natural cubic splines are used $(s''(x_0) = s''(x_n) = 0)$.
 \end{definition}
 
 \begin{obs}
-	We build natural cubic splines. Define $s_i(x) = s(x) \rvert_{[x_i, x_{i+1}]}\ i = 0 \div n-1$. We need $4n$ coefficients.
-	\vspace*{-8pt}
-	\[
-		\left.
-		\begin{aligned}
-			s_i(x_i) 		&= f_i, \quad & i &= 0 \div n-1 \\
-			s_{n-1}(x_n) 	&= f_n  \\
-			s_i(x_{i+1}) 	&= s_{i+1}(x_{i+1}) \quad & i &= 0 \div n-2 \\
-			s_i'(x_{i+1}) 	&= s_{i+1}'(x_{i+1}) \quad & i &= 0 \div n-2 \\
-			s_i''(x_{i+1}) 	&= s_{i+1}''(x_{i+1}) \quad & i &= 0 \div n-2 \\
-		\end{aligned}
-		\right\}
-		4n-2 \text{ conditions}
-		\vspace*{-8pt}
-	\]
-	Impose $s''(x_0) = s''(x_n) = 0$ (natural) $\Rightarrow 4n$ conditions.
-	Define: $h_i = x_{i+1} - x_i\ i = 0 \div n-1$, $M_i = s''(x_i)\ i = 0 \div n$.
-	We have $s_i''(x) = M_i + \frac{M_{i+1} - M_i}{h_i} (x - x_i)\ i = 0 \div n-1$.
-	Integrate twice between $x_i$ and $x$:
-	$s_i(x) = M_i \frac{(x-x_i)^2}{2} + \frac{M_{i+1} - M_i}{h_i} \frac{(x-x_i)^3}{6} + B_i (x - x_i) + A_i$.
-	Imposing $s_i(x_i) = f_i = A_i$
-	\vspace*{-8pt}
-	\[
-		\begin{aligned}
-			&A_i = f_i = s_i(x_i) \ i = 0 \div n \\
-			&B_i = \frac{f_{i+1} - f_i}{h_i} - (M_{i+1} - M_i) \frac{h_i}{6} - \frac{M_i h_i}{2} \ i = 0 \div n-1 \\
-			&h_i M_i + 2(h_i + h_{i+1}) M_{i+1} + h_{i+1} M_{i+2} = 6 d_{i+1}  \ i = 0 \div n-2  \\
-			&d_{i+1} = \frac{f_{i+2} - f_{i+1}}{h_{i+1}} - \frac{f_{i+1} - f_i}{h_i}  i = 0 \div n-2 \\
-			&M_0 = M_n = 0
-		\end{aligned}
-		\vspace*{-8pt}
-	\]
-	The $d_i$ are ordinary differences. We have the tridiagonal system
-	$T [M_1 \cdots M_{n-1}]' = [d_1 \cdots d_{n-1}]'$ where
-	\vspace*{-8pt}
-	\[
-		T =
-		\begin{bmatrix}
-			2(h_0+h_1) & h_1 & 0 & \\
-			h_1 & 2(h_1+h_2) & h_2 & \\
-			0 & h_2 & 2(h_2+h_3) & h_3 \\
-			\vdots & \vdots & \ddots & \ddots & \ddots
-		\end{bmatrix}
-		\vspace*{-8pt}
-	\]
-	Compute $M_i$, then $B_i$ and $s_i(x)$.
+    We build natural cubic splines. Define $s_i(x) = s(x) \rvert_{[x_i, x_{i+1}]}\ i = 0 \div n-1$. We need $4n$ coefficients.
+    \vspace*{-8pt}
+    \[
+        \left.
+        \begin{aligned}
+            s_i(x_i)       &= f_i, \quad & i &= 0 \div n-1 \\
+            s_{n-1}(x_n)   &= f_n  \\
+            s_i(x_{i+1})   &= s_{i+1}(x_{i+1}) \quad & i &= 0 \div n-2 \\
+            s_i'(x_{i+1})  &= s_{i+1}'(x_{i+1}) \quad & i &= 0 \div n-2 \\
+            s_i''(x_{i+1}) &= s_{i+1}''(x_{i+1}) \quad & i &= 0 \div n-2 \\
+        \end{aligned}
+        \right\}
+        4n-2 \text{ conditions}
+        \vspace*{-8pt}
+    \]
+    Impose $s''(x_0) = s''(x_n) = 0$ (natural) $\Rightarrow 4n$ conditions.
+    Define: $h_i = x_{i+1} - x_i\ i = 0 \div n-1$, $M_i = s''(x_i)\ i = 0 \div n$.
+    We have $s_i''(x) = M_i + \frac{M_{i+1} - M_i}{h_i} (x - x_i)\ i = 0 \div n-1$.
+    Integrate twice between $x_i$ and $x$:
+    $s_i(x) = M_i \frac{(x-x_i)^2}{2} + \frac{M_{i+1} - M_i}{h_i} \frac{(x-x_i)^3}{6} + B_i (x - x_i) + A_i$.
+    Imposing $s_i(x_i) = f_i = A_i$
+    \vspace*{-8pt}
+    \[
+        \begin{aligned}
+            &A_i = f_i = s_i(x_i) \ i = 0 \div n \\
+            &B_i = \frac{f_{i+1} - f_i}{h_i} - (M_{i+1} - M_i) \frac{h_i}{6} - \frac{M_i h_i}{2} \ i = 0 \div n-1 \\
+            &h_i M_i + 2(h_i + h_{i+1}) M_{i+1} + h_{i+1} M_{i+2} = 6 d_{i+1}  \ i = 0 \div n-2  \\
+            &d_{i+1} = \frac{f_{i+2} - f_{i+1}}{h_{i+1}} - \frac{f_{i+1} - f_i}{h_i}  i = 0 \div n-2 \\
+            &M_0 = M_n = 0
+        \end{aligned}
+        \vspace*{-8pt}
+    \]
+    The $d_i$ are ordinary differences. We have the tridiagonal system
+    $T [M_1 \cdots M_{n-1}]' = [d_1 \cdots d_{n-1}]'$ where
+    \vspace*{-8pt}
+    \[
+        T =
+        \begin{bmatrix}
+            2(h_0+h_1) & h_1 & 0 & \\
+            h_1 & 2(h_1+h_2) & h_2 & \\
+            0 & h_2 & 2(h_2+h_3) & h_3 \\
+            \vdots & \vdots & \ddots & \ddots & \ddots
+        \end{bmatrix}
+        \vspace*{-8pt}
+    \]
+    Compute $M_i$, then $B_i$ and $s_i(x)$.
 \end{obs}
 
 \subsection*{Trigonometric interpolation}
@@ -518,10 +525,10 @@ at $x_j = \frac{2\pi}{n+1} j\ j = 0 \div n$.
 We use $e^{ikx} = \cos{(kx)} + i \sin{(kx)}$. The interpolating polynomial is
 \vspace*{-10pt}
 \[
-	\hat{f}(x) =
-	\frac{a_0}{2} + \sum_{k=1}^{M+\mu} \left(a_k \cos{(kx)} + b_k \sin{(kx)} \right) =
-	\sum_{k=-M-\mu}^{M+\mu} c_k e^{ikx}
-	\vspace*{-8pt}
+    \hat{f}(x) =
+    \frac{a_0}{2} + \sum_{k=1}^{M+\mu} \left(a_k \cos{(kx)} + b_k \sin{(kx)} \right) =
+    \sum_{k=-M-\mu}^{M+\mu} c_k e^{ikx}
+    \vspace*{-8pt}
 \]
 If $n$ is even, $\mu = 0$, $M = \frac{n}{2}$. If $n$ is odd, $\mu = 1$, $M = \frac{n-1}{2}$ and we impose
 $c_{M+1} = c_{-(M+1)}$ ($\Rightarrow a_{M+1} = 2 c_{M+1}, \ b_{M+1} = 0$).
@@ -530,13 +537,13 @@ Coefficient computation:
 \bgroup
 \setlength{\jot}{-7pt}
 \[
-	\begin{aligned}
-		c_l &= \frac{1}{n+1} \sum_{j=0}^n f(x_k) e^{-ijhl}	\\
-		a_k &= c_{k} + c_{-k} = \frac{2}{n+1} \sum_{j=0}^n f(x_k) \cos{(jhk)} \\
-		b_k &= i(c_{k} - c_{-k}) = \frac{2}{n+1} \sum_{j=0}^n f(x_k) \sin{(jhk)} \\
-		a_{M+1} &= 2 c_{M+1} = \frac{2}{n+1} \sum_{j=0}^n f(x_j) e^{-ijh(M+1)} \quad
-		b_{M+1} = 0
-	\end{aligned}
+    \begin{aligned}
+        c_l &= \frac{1}{n+1} \sum_{j=0}^n f(x_k) e^{-ijhl} \\
+        a_k &= c_{k} + c_{-k} = \frac{2}{n+1} \sum_{j=0}^n f(x_k) \cos{(jhk)} \\
+        b_k &= i(c_{k} - c_{-k}) = \frac{2}{n+1} \sum_{j=0}^n f(x_k) \sin{(jhk)} \\
+        a_{M+1} &= 2 c_{M+1} = \frac{2}{n+1} \sum_{j=0}^n f(x_j) e^{-ijh(M+1)} \quad
+        b_{M+1} = 0
+    \end{aligned}
 \]
 \egroup
 \vspace*{-10pt}
@@ -546,23 +553,23 @@ Coefficient computation:
 % =========================
 \section*{Function approximation}
 
-Given $\varphi_0(x), \ldots,\varphi_n(x)$ l.i. on $I$,
-$\mathcal{F}_n = \{ f_n = a_0 \varphi_0(x) + ... + a_n \varphi_n(x) \mid a_0, \ldots,a_n \in \real \}$.
+Given $\varphi_0(x), \ldots,\varphi_n(x)$ l.i.\ on $I$,
+$\mathcal{F}_n = \{ f_n = a_0 \varphi_0(x) + \cdots + a_n \varphi_n(x) \mid a_0, \ldots,a_n \in \real \}$.
 Given $f$ on $I$, we want $f_n^*\in \mathcal{F}_n$ s.t.
-$\norm{f - f_n^*}_2 = \min_{f_n\in\mathcal{F}_n} \norm{f-f_n}_2$. $\norm{f}$.
+$\norm{f - f_n^*}_2 = \min_{f_n\in\mathcal{F}_n} \norm{f-f_n}_2$.
 
 \begin{theorem}
-    Given $I$ and l.i. $\{\varphi_i(x)\}_{i=0,...,n}$, $\exists! f_n^* = \sum_{k=0}^n a_k^* \varphi_k(x)$ minimizing $\norm{f-f_n}_2$ in $\mathcal{F}_n$.
+    Given $I$ and l.i.\ $\{\varphi_i(x)\}_{i=0,\ldots,n}$, $\exists! f_n^* = \sum_{k=0}^n a_k^* \varphi_k(x)$ minimizing $\norm{f-f_n}_2$ in $\mathcal{F}_n$.
 \end{theorem}
 
 \begin{obs}
     From LA we know $f_n^*$ is characterized by $\langle f-f_n^*, \varphi_i \rangle = 0$.
 \end{obs}
 
-From $\{\varphi_j\}_{j=0,...,n}$ we obtain orthogonal $\{ \psi_j \}_{j=0,...,n}$ (Gram-Schmidt). Setting up the system
+From $\{\varphi_j\}_{j=0,\ldots,n}$ we obtain orthogonal $\{ \psi_j \}_{j=0,\ldots,n}$ (Gram-Schmidt). Setting up the system
 \vspace{-5pt}
 \[
-    (\varphi_0(x),...,\varphi_n(x)) = (\psi_0(x),...,\psi_n(x))
+    (\varphi_0(x),\ldots,\varphi_n(x)) = (\psi_0(x),\ldots,\psi_n(x))
     \begin{pmatrix}
         r_{00} & r_{01} & \hdots & r_{0n} \\
         & r_{11} & \hdots & r_{1n} \\
@@ -571,23 +578,26 @@ From $\{\varphi_j\}_{j=0,...,n}$ we obtain orthogonal $\{ \psi_j \}_{j=0,...,n}$
     \end{pmatrix}
     \vspace{-5pt}
 \]
-with $r_{ij} = \frac{\langle \varphi_j, \psi_i \rangle}{d_i}$, where $d_i = \langle \psi_j, \psi_j \rangle$.
+with $r_{ij} = \frac{\langle \varphi_j, \psi_i \rangle}{d_i}$, where $d_i = \langle \psi_i, \psi_i \rangle$.
+
 We get $\psi_0(x) = \varphi_0(x)$,
-$\psi_j(x) = \varphi_j(x) - \sum_{i=0}^{j-1} \frac{\langle \varphi_j, \psi_i \rangle}{\langle \psi_i, \psi_i \rangle} \psi_i(x), \quad j=1 \div n$.
+\[
+\psi_j(x) = \varphi_j(x) - \sum_{i=0}^{j-1} \frac{\langle \varphi_j, \psi_i \rangle}{\langle \psi_i, \psi_i \rangle} \psi_i(x), \quad j=1 \div n.
+\]
 
 \begin{obs}
-    Procedure: from $\{\varphi_j\}$ compute $\{\psi_j\}$, compute $\langle \psi_i, \psi_i \rangle$, solve the normal-eqs. LS system; now diagonal
+    Procedure: from $\{\varphi_j\}$ compute $\{\psi_j\}$, compute $\langle \psi_i, \psi_i \rangle$, solve the normal-eqs.\ LS system; now diagonal
     $c_i^* = \frac{\langle \psi_i, f \rangle}{\langle \psi_i, \psi_i \rangle}$.
-    $f_n^* = c_0^* \psi_0(x) + ... + c_n^* \psi_n(x)$.
+    $f_n^* = c_0^* \psi_0(x) + \cdots + c_n^* \psi_n(x)$.
 \end{obs}
 
 \begin{proposition}
-    If $\psi_0(x),...,\psi_n(x)$ are orthogonal, $f_n^* (x) = \sum_{j=0}^n c_j^* \psi_j(x)$ is the least-squares function, and
+    If $\psi_0(x),\ldots,\psi_n(x)$ are orthogonal, $f_n^*(x) = \sum_{j=0}^n c_j^* \psi_j(x)$ is the least-squares function, and
     $\norm{f-f_n^*}^2 = \norm{f}^2 - \norm{f_n^*}^2$.
 \end{proposition}
 
 \begin{obs}
-    The normal-eqs. LS system can be ill-conditioned. We want a diagonal LS system.
+    The normal-eqs.\ LS system can be ill-conditioned. We want a diagonal LS system.
 \end{obs}
 
 \subsection*{Polynomial approximation case: orthogonal polynomials}
@@ -596,18 +606,20 @@ $\psi_j(x) = \varphi_j(x) - \sum_{i=0}^{j-1} \frac{\langle \varphi_j, \psi_i \ra
 We have:
 \begin{itemize}
     \item $\langle xu, v \rangle = \langle u, xv\rangle \quad \forall u,v\in \mathcal{P}_n$.
-    \item Given $\psi_0,...,\psi_i$ with degrees $\{\psi_j(x)\} = j$, orthogonal $\{\psi_j\}_j$ ($\Rightarrow$ l.i.),
+    \item Given $\psi_0,\ldots,\psi_i$ with degrees $\deg(\psi_j)=j$, orthogonal $\{\psi_j\}_j$ ($\Rightarrow$ l.i.),
     any polynomial $p_i$ of degree $i$ can be written uniquely as
-    $p_i(x) = c_0 \psi_0(x) + ... + c_i \psi_i(x)$.
-    \item $\langle \psi_j, p_i \rangle = 0 \quad \forall p_i(x)$ s.t. $i<j$.
+    $p_i(x) = c_0 \psi_0(x) + \cdots + c_i \psi_i(x)$.
+    \item $\langle \psi_j, p_i \rangle = 0 \quad \forall p_i(x)$ s.t.\ $i<j$.
 \end{itemize}
 \end{proposition}
 
 \begin{proposition}
-Least-squares approx. solution given by
+Least-squares approx.\ solution given by
 $ p_n^*(x) = \sum_{j=0}^n c_j^* \psi_j(x) $
-where $c_j^*$ is the solution of the normal-eqs. LS system (now diagonal)
-$c_j^* = \frac{\langle \psi_j, f\rangle}{\langle \psi_j, \psi_j \rangle}, \quad j=0 \div n$.
+where $c_j^*$ is the solution of the normal-eqs.\ LS system (now diagonal)
+\[
+c_j^* = \frac{\langle \psi_j, f\rangle}{\langle \psi_j, \psi_j \rangle}, \quad j=0 \div n.
+\]
 Orthogonal polynomials $\psi_j(x)$ are given by the recurrence
 \vspace*{-5pt}
 \[
@@ -616,7 +628,6 @@ Orthogonal polynomials $\psi_j(x)$ are given by the recurrence
         \psi_0(x) = A_0 \quad \quad \quad (\psi_{-1}(x) = 0) \\
         \psi_{j+1}(x) = \alpha_j (x-\beta_j) \psi_j(x) - \gamma_j \psi_{j-1}(x), \ j\geq 0.
     \end{cases}
-    \vspace*{-5pt}
 \]
 with
 \vspace*{-5pt}
@@ -626,7 +637,6 @@ with
         \beta_j = \frac{\langle \psi_j, x\psi_j \rangle}{\langle \psi_j, \psi_j \rangle} = \frac{\langle \psi_j, x\psi_j \rangle}{d_j}, \quad j\geq 0 \\
         \gamma_j = \frac{\alpha_j}{\alpha_{j-1}} \frac{\langle \psi_j, \psi_j \rangle}{\langle \psi_{j-1}, \psi_{j-1} \rangle} = \frac{\alpha_j d_j}{\alpha_{j-1} d_{j-1}}, \quad j\geq 1
     \end{cases}
-    \vspace*{-5pt}
 \]
 \end{proposition}
 
