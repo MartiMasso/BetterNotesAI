@@ -1,5 +1,25 @@
 // lib/api.ts - API helpers for freemium flow
 import { supabase } from "@/supabaseClient";
+import type { User } from "@supabase/supabase-js";
+
+/**
+ * Resilient auth getter: tries getSession() (local cache) first,
+ * then falls back to getUser() (network call).
+ * This prevents "not logged in" errors when the JWT verification
+ * call fails but the session token still exists locally.
+ */
+async function getCurrentUser(): Promise<User | null> {
+    try {
+        // Try local session first (fast, no network)
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) return session.user;
+        // Fallback to network verification
+        const { data: { user } } = await supabase.auth.getUser();
+        return user;
+    } catch {
+        return null;
+    }
+}
 
 export interface UsageStatus {
     message_count: number;
@@ -22,7 +42,7 @@ export interface IncrementResult {
  */
 export async function getUsageStatus(): Promise<UsageStatus | null> {
     try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getCurrentUser();
         if (!user) return null;
 
         const { data, error } = await supabase
@@ -46,7 +66,7 @@ export async function getUsageStatus(): Promise<UsageStatus | null> {
  */
 export async function incrementMessageCount(): Promise<IncrementResult | null> {
     try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getCurrentUser();
         if (!user) return null;
 
         const { data, error } = await supabase
@@ -75,7 +95,7 @@ export async function saveChat(chatData: {
     messages: Array<{ role: string; content: string }>;
 }): Promise<string | null> {
     try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getCurrentUser();
         if (!user) return null;
 
         const { data, error } = await supabase
@@ -247,21 +267,40 @@ export async function createProject(data: {
     is_playground?: boolean;
 }): Promise<Project | null> {
     try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getCurrentUser();
         if (!user) return null;
 
-        const { data: project, error } = await supabase
+        const insertData: Record<string, unknown> = {
+            user_id: user.id,
+            title: data.title || 'Untitled Project',
+            description: data.description,
+            template_id: data.template_id,
+            visibility: data.visibility || 'private',
+        };
+
+        // Include is_playground only if explicitly set
+        if (data.is_playground !== undefined) {
+            insertData.is_playground = data.is_playground;
+        }
+
+        let { data: project, error } = await supabase
             .from('projects')
-            .insert({
-                user_id: user.id,
-                title: data.title || 'Untitled Project',
-                description: data.description,
-                template_id: data.template_id,
-                visibility: data.visibility || 'private',
-                is_playground: data.is_playground ?? false,
-            })
+            .insert(insertData)
             .select('*')
             .single();
+
+        // Fallback: if insert fails (e.g. is_playground column doesn't exist yet),
+        // retry without is_playground
+        if (error && data.is_playground !== undefined) {
+            delete insertData.is_playground;
+            const retry = await supabase
+                .from('projects')
+                .insert(insertData)
+                .select('*')
+                .single();
+            project = retry.data;
+            error = retry.error;
+        }
 
         if (error) {
             console.warn("Failed to create project:", error.message);
@@ -339,8 +378,9 @@ export async function listProjects(filter?: {
             .select('*')
             .order('updated_at', { ascending: false });
 
-        // Default: exclude playground entries from normal project list
-        query = query.eq('is_playground', filter?.is_playground ?? false);
+        // Try to filter by is_playground (column may not exist yet)
+        const playgroundFilter = filter?.is_playground ?? false;
+        query = query.eq('is_playground', playgroundFilter);
 
         if (filter?.starred) {
             query = query.eq('is_starred', true);
@@ -352,7 +392,21 @@ export async function listProjects(filter?: {
             query = query.limit(filter.limit);
         }
 
-        const { data, error } = await query;
+        let { data, error } = await query;
+
+        // Fallback: if is_playground column doesn't exist, retry without it
+        if (error && error.message?.includes('is_playground')) {
+            let retryQuery = supabase
+                .from('projects')
+                .select('*')
+                .order('updated_at', { ascending: false });
+            if (filter?.starred) retryQuery = retryQuery.eq('is_starred', true);
+            if (filter?.search) retryQuery = retryQuery.ilike('title', `%${filter.search}%`);
+            if (filter?.limit) retryQuery = retryQuery.limit(filter.limit);
+            const retry = await retryQuery;
+            data = retry.data;
+            error = retry.error;
+        }
 
         if (error) {
             console.warn("Failed to list projects:", error.message);

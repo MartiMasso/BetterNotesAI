@@ -9,9 +9,11 @@ import PdfPreviewModal from "@/app/components/PdfPreviewModal";
 import SlashCommandPicker, { type SlashCommandPickerRef } from "@/app/components/SlashCommandPicker";
 import { templates } from "../../../lib/templates";
 import { saveWorkspaceDraft, loadWorkspaceDraft, clearWorkspaceDraft, WorkspaceDraft } from "../../../lib/workspaceDraft";
-import { getUsageStatus, incrementMessageCount, saveChat, updateChat, loadChat, UsageStatus } from "../../../lib/api";
+import { getUsageStatus, incrementMessageCount, saveChat, updateChat, loadChat, createProject, saveOutputFile, UsageStatus } from "../../../lib/api";
 import { supabase } from "@/supabaseClient";
 import type { User } from "@supabase/supabase-js";
+import { useToast } from "@/app/components/Toast";
+import { useDialog } from "@/app/components/ConfirmDialog";
 
 type Mode = "start" | "project";
 type Msg = { role: "user" | "assistant"; content: string };
@@ -50,7 +52,22 @@ function splitCompilerOutput(err: string): { message: string; log: string } {
 function WorkspaceContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { toast } = useToast();
+  const { showConfirm, showPrompt } = useDialog();
   const [mode, setMode] = useState<Mode>("start");
+
+  // ── Save conversation to a project (using UI dialogs) ──
+  async function saveToProject() {
+    if (!draftLatex.trim()) { toast("No LaTeX content to save.", "warning"); return; }
+    const title = await showPrompt({ title: "Save to Project", message: "Enter a name for your project:", placeholder: "My Notes", defaultValue: "Untitled Project", confirmText: "Create" });
+    if (!title) return;
+    const project = await createProject({ title });
+    if (!project) { toast("Failed to create project. Are you logged in?", "error"); return; }
+    await saveOutputFile(project.id, "main.tex", draftLatex);
+    toast(`Project "${title}" created!`, "success");
+    const goNow = await showConfirm({ title: "Open Project?", message: `Would you like to open "${title}" now?`, confirmText: "Open", cancelText: "Stay here" });
+    if (goNow) router.push(`/workspace/${project.id}`);
+  }
 
   // START mode
   const [startInput, setStartInput] = useState("");
@@ -245,6 +262,9 @@ function WorkspaceContent() {
   const [consoleStatus, setConsoleStatus] = useState<"idle" | "compiling" | "success" | "error">("idle");
   const [compileTime, setCompileTime] = useState(0);
 
+  // Auto-compile flag: set to true after restoring draft with content
+  const pendingAutoCompile = useRef(false);
+
   // Ctrl+S / Cmd+S to save and compile
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -297,7 +317,12 @@ function WorkspaceContent() {
     setSavedLatex(pendingDraft.savedLatex);
     setMessages(pendingDraft.messages);
     if (pendingDraft.selectedTemplateId) setSelectedTemplateId(pendingDraft.selectedTemplateId);
-    if (pendingDraft.draftLatex || pendingDraft.savedLatex) setMode("project");
+    if (pendingDraft.draftLatex || pendingDraft.savedLatex) {
+      setMode("project");
+      if (pendingDraft.draftLatex.trim() || pendingDraft.savedLatex.trim()) {
+        pendingAutoCompile.current = true;
+      }
+    }
     setShowRestoreBanner(false);
     setPendingDraft(null);
   }, [pendingDraft]);
@@ -547,6 +572,18 @@ function WorkspaceContent() {
     if (res.ok) setCompiledLatex(toCompile);
     return res;
   }
+
+  // Auto-compile after draft restore
+  useEffect(() => {
+    if (!pendingAutoCompile.current) return;
+    const timer = setTimeout(() => {
+      if (pendingAutoCompile.current) {
+        pendingAutoCompile.current = false;
+        saveAndCompile();
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  });
 
   async function fixWithAI() {
     if (!savedLatex.trim() || !compileLog.trim()) return;
@@ -928,6 +965,10 @@ function WorkspaceContent() {
                 <div className="w-px h-7 bg-white/10 mx-1" />
                 <button onClick={saveAndCompile} disabled={!canSaveAndCompile} className={["rounded-xl px-3 py-2 text-sm font-semibold", canSaveAndCompile ? "bg-white text-neutral-950 hover:bg-white/90" : "bg-white/20 text-white/60 cursor-not-allowed"].join(" ")}>Compile</button>
                 <div className="w-px h-7 bg-white/10 mx-1" />
+                <button onClick={saveToProject} disabled={!draftLatex.trim()} className="rounded-xl px-3 py-2 text-sm border border-emerald-400/30 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 disabled:opacity-30 disabled:cursor-not-allowed font-medium" title="Save to a project for later">
+                  <svg className="w-4 h-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" /></svg>
+                  Save
+                </button>
                 <button onClick={downloadTex} disabled={!draftLatex.trim()} className="rounded-xl px-3 py-2 text-sm border border-white/15 bg-white/10 hover:bg-white/15 disabled:opacity-40">.tex</button>
                 <button onClick={downloadPdf} disabled={!pdfUrl} className="rounded-xl px-3 py-2 text-sm border border-white/15 bg-white/10 hover:bg-white/15 disabled:opacity-40">PDF</button>
               </div>

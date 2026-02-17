@@ -10,6 +10,8 @@ import {
 import { savePlaygroundDraft, loadPlaygroundDraft, clearPlaygroundDraft } from "@/lib/playgroundDraft";
 import ImportProjectModal from "@/app/components/ImportProjectModal";
 import ExportProjectModal from "@/app/components/ExportProjectModal";
+import { useToast } from "@/app/components/Toast";
+import { useDialog } from "@/app/components/ConfirmDialog";
 import type { User } from "@supabase/supabase-js";
 
 // ── Types ──
@@ -51,6 +53,8 @@ export default function PlaygroundPage() {
 function PlaygroundContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
+    const { toast } = useToast();
+    const { showConfirm } = useDialog();
     const cloudProjectId = searchParams.get("project");
 
     // Auth
@@ -91,6 +95,9 @@ function PlaygroundContent() {
     // Debounce save ref
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    // Auto-compile flag: set to true when restoring a session with content
+    const pendingAutoCompile = useRef(false);
+
     // ── Auth check ──
     useEffect(() => {
         supabase.auth.getUser().then(({ data }) => setUser(data.user));
@@ -110,6 +117,7 @@ function PlaygroundContent() {
                         setFiles(loaded);
                         setActiveFilePath(loaded[0].path);
                         setOpenTabs(loaded.map((f) => f.path));
+                        if (loaded.some((f) => f.content.trim())) pendingAutoCompile.current = true;
                     }
                 }
             })();
@@ -122,10 +130,24 @@ function PlaygroundContent() {
                 setOpenTabs(draft.files.map((f) => f.path));
                 setSessionName(draft.sessionName);
                 setSplitRatio(draft.splitRatio);
+                if (draft.files.some((f) => f.content.trim())) pendingAutoCompile.current = true;
             }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // ── Auto-compile after restore ──
+    useEffect(() => {
+        if (!pendingAutoCompile.current) return;
+        // Small delay so state settles before compile
+        const timer = setTimeout(() => {
+            if (pendingAutoCompile.current) {
+                pendingAutoCompile.current = false;
+                compileAll();
+            }
+        }, 500);
+        return () => clearTimeout(timer);
+    });
 
     // ── Autosave ──
     useEffect(() => {
@@ -191,9 +213,10 @@ function PlaygroundContent() {
         setOpenTabs((prev) => [...prev, name]);
     }
 
-    function deleteFile(path: string) {
+    async function deleteFile(path: string) {
         if (path === "main.tex") return; // protect main
-        if (!confirm(`Delete "${path}"?`)) return;
+        const ok = await showConfirm({ title: "Delete File", message: `Delete "${path}"?`, variant: "danger", confirmText: "Delete" });
+        if (!ok) return;
         setFiles((prev) => prev.filter((f) => f.path !== path));
         setOpenTabs((prev) => prev.filter((t) => t !== path));
         if (activeFilePath === path) setActiveFilePath("main.tex");
@@ -211,7 +234,7 @@ function PlaygroundContent() {
             return;
         }
         const newName = renameValue.trim();
-        if (files.some((f) => f.path === newName)) { alert("File already exists."); return; }
+        if (files.some((f) => f.path === newName)) { toast("File already exists.", "warning"); return; }
         setFiles((prev) => prev.map((f) => f.path === renamingFile ? { ...f, path: newName, dirty: true } : f));
         setOpenTabs((prev) => prev.map((t) => t === renamingFile ? newName : t));
         if (activeFilePath === renamingFile) setActiveFilePath(newName);
@@ -231,8 +254,9 @@ function PlaygroundContent() {
     }
 
     // ── New session ──
-    function newSession() {
-        if (!confirm("Start a new session? Current local work will be cleared.")) return;
+    async function newSession() {
+        const ok = await showConfirm({ title: "New Session", message: "Start a new session? Current local work will be cleared.", variant: "danger", confirmText: "Clear & Start" });
+        if (!ok) return;
         clearPlaygroundDraft();
         setFiles([{ path: "main.tex", content: DEFAULT_LATEX, dirty: false }]);
         setActiveFilePath("main.tex");
@@ -281,7 +305,7 @@ function PlaygroundContent() {
             clearPlaygroundDraft();
             router.push(`/playground?project=${project.id}`);
         } else {
-            alert("Failed to save to cloud.");
+            toast("Failed to save to cloud.", "error");
         }
     }
 

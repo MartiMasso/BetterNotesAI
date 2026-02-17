@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import AppBackground from "../components/AppBackground";
 import Navbar from "../components/Navbar";
+import { useToast } from "../components/Toast";
 import * as supabaseMod from "../../supabaseClient";
 
 const supabase: any = (supabaseMod as any).supabase ?? (supabaseMod as any).default;
@@ -29,6 +30,7 @@ export default function PricingClient({
 }) {
   const [loadingPlan, setLoadingPlan] = useState<null | "pro">(null);
   const [currentPlan, setCurrentPlan] = useState<CurrentPlan | null>(null);
+  const { toast } = useToast();
 
   const loadCurrentPlan = useCallback(async () => {
     try {
@@ -144,7 +146,7 @@ export default function PricingClient({
       window.location.href = json.url;
     } catch (e: any) {
       console.error(e);
-      alert(e?.message ?? "Stripe checkout failed");
+      toast(e?.message ?? "Stripe checkout failed", "error");
     } finally {
       setLoadingPlan(null);
     }
@@ -174,7 +176,7 @@ export default function PricingClient({
       window.location.href = json.url;
     } catch (e: any) {
       console.error(e);
-      alert(e?.message ?? "Failed to open subscription management");
+      toast(e?.message ?? "Failed to open subscription management", "error");
     }
   }
 

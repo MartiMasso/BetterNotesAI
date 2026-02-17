@@ -15,6 +15,8 @@ import InlineEditMenu from "@/app/components/InlineEditMenu";
 import PaywallModal from "@/app/components/PaywallModal";
 import SlashCommandPicker, { type SlashCommandPickerRef } from "@/app/components/SlashCommandPicker";
 import { templates } from "@/lib/templates";
+import { useToast } from "@/app/components/Toast";
+import { useDialog } from "@/app/components/ConfirmDialog";
 import type { User } from "@supabase/supabase-js";
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -31,6 +33,8 @@ const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:
 export default function ProjectWorkspace() {
     const { projectId } = useParams<{ projectId: string }>();
     const router = useRouter();
+    const { toast } = useToast();
+    const { showConfirm, showPrompt } = useDialog();
 
     // Auth + project
     const [user, setUser] = useState<User | null>(null);
@@ -93,6 +97,9 @@ export default function ProjectWorkspace() {
     const [isFixing, setIsFixing] = useState(false);
     const [compileError, setCompileError] = useState("");
     const [compileLog, setCompileLog] = useState("");
+
+    // Auto-compile flag
+    const pendingAutoCompile = useRef(false);
 
     // Inline edit
     const editorRef = useRef<HTMLTextAreaElement | null>(null);
@@ -169,10 +176,23 @@ export default function ProjectWorkspace() {
                 // Select main.tex if it exists, otherwise first file
                 const main = outputs.find((o) => o.file_path === "main.tex");
                 setActiveOutputPath(main ? "main.tex" : outputs[0].file_path);
+                if (outputs.some((o) => (o.content ?? "").trim())) pendingAutoCompile.current = true;
             }
         }
         loadOutputs();
     }, [projectId]);
+
+    // Auto-compile when files load with content
+    useEffect(() => {
+        if (!pendingAutoCompile.current) return;
+        const timer = setTimeout(() => {
+            if (pendingAutoCompile.current) {
+                pendingAutoCompile.current = false;
+                saveAndCompile();
+            }
+        }, 500);
+        return () => clearTimeout(timer);
+    });
 
     // ── Scroll chat ──
     useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -221,20 +241,21 @@ export default function ProjectWorkspace() {
         setActiveOutputPath("main.tex");
     }
 
-    function addNewOutputFile() {
-        const name = prompt("File name (e.g. preamble.tex, chapters/intro.tex):");
+    async function addNewOutputFile() {
+        const name = await showPrompt({ title: "New File", message: "Enter file name (e.g. preamble.tex, chapters/intro.tex):", placeholder: "preamble.tex", confirmText: "Create" });
         if (!name?.trim()) return;
         const normalized = name.trim().replace(/\\/g, "/");
         const exists = outputFiles.some((f) => f.filePath === normalized);
-        if (exists) { alert("File already exists."); return; }
+        if (exists) { toast("File already exists.", "warning"); return; }
         setOutputFiles((prev) => [...prev, { filePath: normalized, content: "", dirty: true }]);
         setActiveOutputPath(normalized);
         setActiveTab("latex");
     }
 
-    function deleteOutputEntry(filePath: string) {
-        if (filePath === "main.tex") { alert("Cannot delete main.tex"); return; }
-        if (!confirm(`Delete output file "${filePath}"?`)) return;
+    async function deleteOutputEntry(filePath: string) {
+        if (filePath === "main.tex") { toast("Cannot delete main.tex", "warning"); return; }
+        const ok = await showConfirm({ title: "Delete File", message: `Delete output file "${filePath}"?`, variant: "danger", confirmText: "Delete" });
+        if (!ok) return;
         setOutputFiles((prev) => prev.filter((f) => f.filePath !== filePath));
         if (activeOutputPath === filePath) setActiveOutputPath("main.tex");
     }
@@ -559,7 +580,7 @@ export default function ProjectWorkspace() {
 
     // ═══ File operations (project files / uploads) ═══
     async function handleNewFolder(parentId: string | null) {
-        const name = prompt("Folder name:");
+        const name = await showPrompt({ title: "New Folder", placeholder: "Folder name", confirmText: "Create" });
         if (!name?.trim() || !projectId) return;
         await createProjectFolder(projectId, name.trim(), parentId);
         refreshFiles();

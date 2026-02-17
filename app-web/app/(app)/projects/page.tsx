@@ -1,14 +1,15 @@
 "use client";
 
 import { Suspense, useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { listProjects, createProject, type Project } from "@/lib/api";
+import { listProjects, createProject, loadChats, type Project } from "@/lib/api";
 import { supabase } from "@/supabaseClient";
 import ProjectCard from "@/app/components/ProjectCard";
 import { templates } from "@/lib/templates";
 import type { User } from "@supabase/supabase-js";
 
-type Filter = "all" | "starred" | "shared";
+type Filter = "all" | "starred" | "chats";
 
 export default function ProjectsPage() {
     return (
@@ -30,11 +31,14 @@ function ProjectsContent() {
     const [newTitle, setNewTitle] = useState("");
     const [newTemplateId, setNewTemplateId] = useState<string | null>(null);
     const [creating, setCreating] = useState(false);
+    const [chats, setChats] = useState<Array<{ id: string; title: string; created_at: string; updated_at: string }>>([]);
 
     // Auth
+    const [authLoading, setAuthLoading] = useState(true);
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
             setUser(session?.user ?? null);
+            setAuthLoading(false);
         });
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
             (_event, session) => setUser(session?.user ?? null)
@@ -52,11 +56,18 @@ function ProjectsContent() {
     const fetchProjects = useCallback(async () => {
         if (!user) return;
         setLoading(true);
-        const data = await listProjects({
-            starred: filter === "starred" ? true : undefined,
-            search: search.trim() || undefined,
-        });
-        setProjects(data);
+        if (filter === "chats") {
+            const chatData = await loadChats();
+            setChats(chatData);
+            setProjects([]);
+        } else {
+            const data = await listProjects({
+                starred: filter === "starred" ? true : undefined,
+                search: search.trim() || undefined,
+            });
+            setProjects(data);
+            setChats([]);
+        }
         setLoading(false);
     }, [user, filter, search]);
 
@@ -80,10 +91,19 @@ function ProjectsContent() {
         }
     }
 
-    if (!user) {
+    if (authLoading) {
         return (
             <div className="flex items-center justify-center h-full min-h-[60vh]">
+                <div className="w-6 h-6 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+            </div>
+        );
+    }
+
+    if (!user) {
+        return (
+            <div className="flex flex-col items-center justify-center h-full min-h-[60vh] gap-4">
                 <div className="text-white/40 text-sm">Sign in to view your projects</div>
+                <a href="/login" className="rounded-xl px-4 py-2 text-sm bg-white text-neutral-950 hover:bg-white/90 font-medium">Log in</a>
             </div>
         );
     }
@@ -91,6 +111,7 @@ function ProjectsContent() {
     const filterButtons: { key: Filter; label: string }[] = [
         { key: "all", label: "All" },
         { key: "starred", label: "Starred" },
+        { key: "chats", label: "Chats" },
     ];
 
     return (
@@ -145,13 +166,53 @@ function ProjectsContent() {
                 </div>
             </div>
 
-            {/* Grid */}
+            {/* Content */}
             {loading ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                     {Array.from({ length: 8 }).map((_, i) => (
                         <div key={i} className="rounded-2xl border border-white/8 bg-white/[0.03] h-52 animate-pulse" />
                     ))}
                 </div>
+            ) : filter === "chats" ? (
+                /* ── Chats list ── */
+                chats.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20 text-center">
+                        <svg className="h-16 w-16 text-white/10 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="0.75">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+                        </svg>
+                        <p className="text-white/40 text-sm mb-4">No conversations yet</p>
+                        <Link href="/workspace" className="rounded-xl bg-white/10 border border-white/15 px-4 py-2 text-sm text-white/80 hover:bg-white/15 transition-colors">
+                            Start a conversation
+                        </Link>
+                    </div>
+                ) : (
+                    <div className="space-y-2">
+                        {chats.map((chat) => (
+                            <Link
+                                key={chat.id}
+                                href={`/workspace?chat=${chat.id}`}
+                                className="flex items-center gap-4 rounded-2xl border border-white/8 bg-white/[0.03] hover:bg-white/[0.06] px-5 py-4 transition-colors group"
+                            >
+                                <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex-shrink-0">
+                                    <svg className="h-5 w-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+                                    </svg>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium text-white/90 truncate">{chat.title || "Untitled Chat"}</div>
+                                    <div className="text-xs text-white/30 mt-0.5">
+                                        {new Date(chat.updated_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                                        {" · "}
+                                        {new Date(chat.updated_at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+                                    </div>
+                                </div>
+                                <svg className="h-4 w-4 text-white/20 group-hover:text-white/50 flex-shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                                </svg>
+                            </Link>
+                        ))}
+                    </div>
+                )
             ) : projects.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                     <svg className="h-16 w-16 text-white/10 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="0.75">

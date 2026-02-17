@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { createProject, listProjects, saveOutputFile, type Project } from "@/lib/api";
+import { useToast } from "@/app/components/Toast";
+import { useDialog } from "@/app/components/ConfirmDialog";
 
 interface ExportProjectModalProps {
     isOpen: boolean;
@@ -18,6 +20,8 @@ export default function ExportProjectModal({ isOpen, onClose, files, sessionName
     const [search, setSearch] = useState("");
     const [loading, setLoading] = useState(false);
     const [exporting, setExporting] = useState(false);
+    const { toast } = useToast();
+    const { showConfirm } = useDialog();
 
     useEffect(() => {
         if (!isOpen) return;
@@ -41,21 +45,22 @@ export default function ExportProjectModal({ isOpen, onClose, files, sessionName
         setExporting(true);
         try {
             const project = await createProject({ title: title.trim(), is_playground: false });
-            if (!project) { alert("Failed to create project."); return; }
+            if (!project) { toast("Failed to create project.", "error"); return; }
             for (const f of files) {
                 await saveOutputFile(project.id, f.path, f.content);
             }
             onExported?.(project.id);
             onClose();
         } catch {
-            alert("Export failed.");
+            toast("Export failed.", "error");
         } finally {
             setExporting(false);
         }
     }
 
     async function handleExportToExisting(project: Project) {
-        if (!confirm(`This will add/overwrite files in "${project.title}". Continue?`)) return;
+        const ok = await showConfirm({ title: "Overwrite Files?", message: `This will add/overwrite files in "${project.title}". Continue?`, confirmText: "Export", variant: "danger" });
+        if (!ok) return;
         setExporting(true);
         try {
             for (const f of files) {
@@ -64,7 +69,7 @@ export default function ExportProjectModal({ isOpen, onClose, files, sessionName
             onExported?.(project.id);
             onClose();
         } catch {
-            alert("Export failed.");
+            toast("Export failed.", "error");
         } finally {
             setExporting(false);
         }

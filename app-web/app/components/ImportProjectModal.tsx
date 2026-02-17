@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { listProjects, listOutputFiles, type Project, type OutputFile } from "@/lib/api";
+import { useToast } from "@/app/components/Toast";
 
 interface ImportProjectModalProps {
     isOpen: boolean;
@@ -15,6 +16,7 @@ export default function ImportProjectModal({ isOpen, onClose, onImport }: Import
     const [search, setSearch] = useState("");
     const [loading, setLoading] = useState(false);
     const [importing, setImporting] = useState<string | null>(null);
+    const { toast } = useToast();
 
     useEffect(() => {
         if (!isOpen) return;
@@ -45,13 +47,13 @@ export default function ImportProjectModal({ isOpen, onClose, onImport }: Import
                 .filter((f: OutputFile) => !f.is_binary && f.content)
                 .map((f: OutputFile) => ({ path: f.file_path, content: f.content || "" }));
             if (files.length === 0) {
-                alert("This project has no text files to import.");
+                toast("This project has no text files to import.", "warning");
                 return;
             }
             onImport(files, project.title);
             onClose();
         } catch {
-            alert("Failed to load project files.");
+            toast("Failed to load project files.", "error");
         } finally {
             setImporting(null);
         }
