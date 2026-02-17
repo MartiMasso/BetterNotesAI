@@ -1042,7 +1042,15 @@ function WorkspaceContent() {
                   <div style={{ width: `${100 - splitRatio}%` }} className="flex flex-col min-w-0">
                     <div className="px-3 py-1.5 border-b border-white/8 text-[10px] text-white/30 font-semibold uppercase tracking-wider">Preview</div>
                     <div className="flex-1">
-                      {pdfUrl ? <iframe title="PDF Preview" src={pdfUrl} className="w-full h-full" /> : <div className="h-full flex items-center justify-center text-white/40 text-sm">No PDF yet</div>}
+                      {pdfUrl ? <iframe title="PDF Preview" src={pdfUrl} className="w-full h-full" /> : (
+                        <div className="h-full flex flex-col items-center justify-center gap-3 text-center px-4">
+                          <svg className={`h-10 w-10 text-white/10 ${isGenerating || isCompiling ? 'animate-pulse' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                          </svg>
+                          <div className="text-white/30 text-sm">{isGenerating ? 'Generating your document…' : isCompiling ? 'Compiling PDF…' : 'Your PDF preview will appear here'}</div>
+                          <div className="text-white/15 text-xs">{isGenerating ? 'This usually takes 10–30 seconds' : isCompiling ? 'Almost there…' : 'Send a prompt to get started'}</div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1050,7 +1058,15 @@ function WorkspaceContent() {
                 /* ── Single panel (Preview or LaTeX) ── */
                 <div className="flex-1 rounded-2xl border border-white/10 bg-white/5 backdrop-blur overflow-hidden">
                   {activeRightTab === "preview" ? (
-                    pdfUrl ? <iframe title="PDF Preview" src={pdfUrl} className="w-full h-full" /> : <div className="h-full flex items-center justify-center text-white/60 text-sm">No PDF yet. Send a prompt on the left.</div>
+                    pdfUrl ? <iframe title="PDF Preview" src={pdfUrl} className="w-full h-full" /> : (
+                      <div className="h-full flex flex-col items-center justify-center gap-3 text-center px-4">
+                        <svg className={`h-10 w-10 text-white/10 ${isGenerating || isCompiling ? 'animate-pulse' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                        </svg>
+                        <div className="text-white/30 text-sm">{isGenerating ? 'Generating your document…' : isCompiling ? 'Compiling PDF…' : 'Your PDF preview will appear here'}</div>
+                        <div className="text-white/15 text-xs">{isGenerating ? 'This usually takes 10–30 seconds' : isCompiling ? 'Almost there…' : 'Send a prompt on the left to get started'}</div>
+                      </div>
+                    )
                   ) : (
                     <textarea value={draftLatex} onChange={(e) => { setDraftLatex(e.target.value); setDirty(e.target.value !== savedLatex); }} className="w-full h-full bg-transparent p-4 font-mono text-sm outline-none text-white/90" placeholder="LaTeX will appear here…" />
                   )}
