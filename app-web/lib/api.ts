@@ -257,7 +257,7 @@ export interface Project {
 }
 
 /**
- * Create a new project
+ * Create a new project — returns { project, error } so callers can show meaningful errors
  */
 export async function createProject(data: {
     title?: string;
@@ -265,10 +265,10 @@ export async function createProject(data: {
     template_id?: string;
     visibility?: 'private' | 'public' | 'unlisted';
     is_playground?: boolean;
-}): Promise<Project | null> {
+}): Promise<{ project: Project | null; error?: string }> {
     try {
         const user = await getCurrentUser();
-        if (!user) return null;
+        if (!user) return { project: null, error: "Not logged in. Please sign in first." };
 
         const insertData: Record<string, unknown> = {
             user_id: user.id,
@@ -304,13 +304,13 @@ export async function createProject(data: {
 
         if (error) {
             console.warn("Failed to create project:", error.message);
-            return null;
+            return { project: null, error: error.message };
         }
 
-        return project as Project;
-    } catch (e) {
+        return { project: project as Project };
+    } catch (e: any) {
         console.warn("createProject error:", e);
-        return null;
+        return { project: null, error: e?.message ?? "Unknown error creating project" };
     }
 }
 
@@ -434,7 +434,7 @@ export async function promotePlayground(
     sessionName: string,
     files: { path: string; content: string }[]
 ): Promise<Project | null> {
-    const project = await createProject({
+    const { project } = await createProject({
         title: sessionName || 'Playground Session',
         is_playground: true,
     });

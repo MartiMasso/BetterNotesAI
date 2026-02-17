@@ -44,8 +44,8 @@ export default function ExportProjectModal({ isOpen, onClose, files, sessionName
         if (!title.trim()) return;
         setExporting(true);
         try {
-            const project = await createProject({ title: title.trim(), is_playground: false });
-            if (!project) { toast("Failed to create project.", "error"); return; }
+            const { project, error: createErr } = await createProject({ title: title.trim(), is_playground: false });
+            if (!project) { toast(createErr || "Failed to create project.", "error"); return; }
             for (const f of files) {
                 await saveOutputFile(project.id, f.path, f.content);
             }

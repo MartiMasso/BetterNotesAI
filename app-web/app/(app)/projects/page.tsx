@@ -78,7 +78,7 @@ function ProjectsContent() {
     async function handleCreateProject() {
         if (creating) return;
         setCreating(true);
-        const project = await createProject({
+        const { project } = await createProject({
             title: newTitle.trim() || "Untitled Project",
             template_id: newTemplateId || undefined,
         });

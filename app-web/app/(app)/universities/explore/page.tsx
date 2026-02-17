@@ -39,7 +39,7 @@ export default function ExplorePage() {
     }
 
     async function handleCopyToWorkspace(doc: PublishedDocument) {
-        const project = await createProject({ title: `${doc.title} (Copy)` });
+        const { project } = await createProject({ title: `${doc.title} (Copy)` });
         if (project) {
             router.push(`/workspace/${project.id}`);
         }

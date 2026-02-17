@@ -9,7 +9,7 @@ import PdfPreviewModal from "@/app/components/PdfPreviewModal";
 import SlashCommandPicker, { type SlashCommandPickerRef } from "@/app/components/SlashCommandPicker";
 import { templates } from "../../../lib/templates";
 import { saveWorkspaceDraft, loadWorkspaceDraft, clearWorkspaceDraft, WorkspaceDraft } from "../../../lib/workspaceDraft";
-import { getUsageStatus, incrementMessageCount, saveChat, updateChat, loadChat, createProject, saveOutputFile, UsageStatus } from "../../../lib/api";
+import { getUsageStatus, incrementMessageCount, saveChat, updateChat, loadChat, createProject, listProjects, saveOutputFile, UsageStatus } from "../../../lib/api";
 import { supabase } from "@/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 import { useToast } from "@/app/components/Toast";
@@ -59,14 +59,44 @@ function WorkspaceContent() {
   // ── Save conversation to a project (using UI dialogs) ──
   async function saveToProject() {
     if (!draftLatex.trim()) { toast("No LaTeX content to save.", "warning"); return; }
-    const title = await showPrompt({ title: "Save to Project", message: "Enter a name for your project:", placeholder: "My Notes", defaultValue: "Untitled Project", confirmText: "Create" });
-    if (!title) return;
-    const project = await createProject({ title });
-    if (!project) { toast("Failed to create project. Are you logged in?", "error"); return; }
-    await saveOutputFile(project.id, "main.tex", draftLatex);
-    toast(`Project "${title}" created!`, "success");
-    const goNow = await showConfirm({ title: "Open Project?", message: `Would you like to open "${title}" now?`, confirmText: "Open", cancelText: "Stay here" });
-    if (goNow) router.push(`/workspace/${project.id}`);
+
+    // Ask: new project or existing?
+    const choice = await showConfirm({
+      title: "Save to Project",
+      message: "Where would you like to save this content?",
+      confirmText: "New Project",
+      cancelText: "Existing Project",
+    });
+
+    if (choice) {
+      // ── New project flow ──
+      const title = await showPrompt({ title: "New Project", message: "Enter a name for your project:", placeholder: "My Notes", defaultValue: "Untitled Project", confirmText: "Create" });
+      if (!title) return;
+      const { project, error } = await createProject({ title });
+      if (!project) { toast(error || "Failed to create project.", "error"); return; }
+      await saveOutputFile(project.id, "main.tex", draftLatex);
+      toast(`Project "${title}" created!`, "success");
+      const goNow = await showConfirm({ title: "Open Project?", message: `Would you like to open "${title}" now?`, confirmText: "Open", cancelText: "Stay here" });
+      if (goNow) router.push(`/workspace/${project.id}`);
+    } else {
+      // ── Existing project flow ──
+      const projects = await listProjects({ limit: 50 });
+      if (projects.length === 0) { toast("No projects found. Create one first!", "warning"); return; }
+      const projectNames = projects.map(p => p.title).join("\n");
+      const chosen = await showPrompt({
+        title: "Save to Existing Project",
+        message: `Choose a project:\n${projectNames}\n\nType the exact project name:`,
+        placeholder: "Project name...",
+        confirmText: "Save",
+      });
+      if (!chosen) return;
+      const target = projects.find(p => p.title.toLowerCase() === chosen.toLowerCase());
+      if (!target) { toast(`Project "${chosen}" not found.`, "error"); return; }
+      await saveOutputFile(target.id, "main.tex", draftLatex);
+      toast(`Saved to "${target.title}"!`, "success");
+      const goNow = await showConfirm({ title: "Open Project?", message: `Would you like to open "${target.title}" now?`, confirmText: "Open", cancelText: "Stay here" });
+      if (goNow) router.push(`/workspace/${target.id}`);
+    }
   }
 
   // START mode
@@ -670,6 +700,24 @@ function WorkspaceContent() {
     return processed;
   }
 
+  // ── Animated loading steps ──
+  const loadingSteps = [
+    "Analyzing your request…",
+    "Generating LaTeX content…",
+    "Structuring document layout…",
+    "Formatting equations and symbols…",
+    "Finalizing output…",
+  ];
+
+  function startLoadingAnimation() {
+    let step = 0;
+    const interval = setInterval(() => {
+      step = (step + 1) % loadingSteps.length;
+      setMessages((m) => replaceLastWorking(m, loadingSteps[step]));
+    }, 3000);
+    return interval;
+  }
+
   async function startSend() {
     const text = startInput.trim();
     const hasFiles = files.length > 0;
@@ -683,24 +731,23 @@ function WorkspaceContent() {
     setStartInput("");
     setProjectInput("");
 
-    // Create message with generic "Processing files..." if needed
     setMessages((m) => [
       ...m,
       { role: "user", content: text || (hasFiles ? `[Sent ${files.length} file(s)]` : "") },
-      { role: "assistant", content: "Working… processing request..." },
+      { role: "assistant", content: loadingSteps[0] },
     ]);
+
+    const loadingInterval = startLoadingAnimation();
 
     // Process files
     const filePayload = await processFilesForPayload(files);
-
-    // Clear files after processing? Or keep them until success? 
-    // Usually better to clear to avoid resending by accident.
     setFiles([]);
     setFileError("");
 
     const gen = await generateLatexFromPrompt(text, selectedTemplate?.id, undefined, filePayload);
+    clearInterval(loadingInterval);
+
     if (!gen.ok) {
-      // Restore files if failed? Complex. Let's just error.
       setMessages((m) => replaceLastWorking(m, `Error: ${gen.error}`));
       return;
     }
@@ -722,8 +769,10 @@ function WorkspaceContent() {
     setMessages((m) => [
       ...m,
       { role: "user", content: text || (hasFiles ? `[Sent ${files.length} file(s)]` : "") },
-      { role: "assistant", content: "Working… processing request..." },
+      { role: "assistant", content: loadingSteps[0] },
     ]);
+
+    const loadingInterval = startLoadingAnimation();
 
     // Process files
     const filePayload = await processFilesForPayload(files);
@@ -733,6 +782,8 @@ function WorkspaceContent() {
     const base = (draftLatex || savedLatex || "").trim();
 
     const gen = await generateLatexFromPrompt(text, selectedTemplate?.id, base, filePayload);
+    clearInterval(loadingInterval);
+
     if (!gen.ok) {
       setMessages((m) => replaceLastWorking(m, `Error: ${gen.error}`));
       return;
