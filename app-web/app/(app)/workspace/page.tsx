@@ -6,6 +6,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import TemplateCardSelect from "@/app/components/TemplateCardSelect";
 import PaywallModal from "@/app/components/PaywallModal";
 import PdfPreviewModal from "@/app/components/PdfPreviewModal";
+import SlashCommandPicker, { type SlashCommandPickerRef } from "@/app/components/SlashCommandPicker";
 import { templates } from "../../../lib/templates";
 import { saveWorkspaceDraft, loadWorkspaceDraft, clearWorkspaceDraft, WorkspaceDraft } from "../../../lib/workspaceDraft";
 import { getUsageStatus, incrementMessageCount, saveChat, updateChat, loadChat, UsageStatus } from "../../../lib/api";
@@ -201,6 +202,29 @@ function WorkspaceContent() {
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Slash-command picker refs
+  const slashPickerStartRef = useRef<SlashCommandPickerRef>(null);
+  const slashPickerProjectRef = useRef<SlashCommandPickerRef>(null);
+
+  // Console panel state
+  const [consoleOpen, setConsoleOpen] = useState(false);
+  const [consoleStatus, setConsoleStatus] = useState<"idle" | "compiling" | "success" | "error">("idle");
+  const [compileTime, setCompileTime] = useState(0);
+
+  // Ctrl+S / Cmd+S to save and compile
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        if (mode === "project" && draftLatex.trim() && !busy()) {
+          saveAndCompile();
+        }
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  });
 
   useEffect(() => {
     if (mode === "project") bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -826,13 +850,23 @@ function WorkspaceContent() {
                     </div>
                   )}
 
-                  <input
-                    value={projectInput}
-                    onChange={(e) => setProjectInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) projectSend(); }}
-                    className="h-10 w-full rounded-xl border border-white/15 bg-black/20 px-3 text-sm outline-none placeholder:text-white/45 text-white"
-                    placeholder="Ask BetterNotes to create…"
-                  />
+                  <div className="relative w-full">
+                    <SlashCommandPicker
+                      ref={slashPickerProjectRef}
+                      inputValue={projectInput}
+                      isPro={usageStatus?.is_paid ?? false}
+                      onSelect={(id) => { setSelectedTemplateId(id); setProjectInput(""); }}
+                      onProBlocked={() => setShowPaywallModal(true)}
+                      onDismiss={() => setProjectInput("")}
+                    />
+                    <input
+                      value={projectInput}
+                      onChange={(e) => setProjectInput(e.target.value)}
+                      onKeyDown={(e) => { if (slashPickerProjectRef.current?.handleKeyDown(e)) return; if (e.key === "Enter" && !e.shiftKey) projectSend(); }}
+                      className="h-10 w-full rounded-xl border border-white/15 bg-black/20 px-3 text-sm outline-none placeholder:text-white/45 text-white"
+                      placeholder="Type / for templates, or ask BetterNotes…"
+                    />
+                  </div>
                 </div>
 
                 <button
@@ -870,22 +904,35 @@ function WorkspaceContent() {
                   <textarea value={draftLatex} onChange={(e) => { setDraftLatex(e.target.value); setDirty(e.target.value !== savedLatex); }} className="w-full h-full bg-transparent p-4 font-mono text-sm outline-none text-white/90" placeholder="LaTeX will appear here…" />
                 )}
               </div>
-              {compileError ? (
-                <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <div className="text-sm font-semibold text-red-200">Compilation failed</div>
-                      <div className="text-xs text-red-200/80 mt-1">{compileError}</div>
-                      {pdfUrl ? <div className="text-xs text-white/60 mt-2">Showing last valid PDF preview. Fix and recompile to update.</div> : null}
+              {/* ── Compilation Console ── */}
+              {(compileError || isCompiling || consoleOpen) && (
+                <div className={`rounded-2xl border p-3 transition-all ${compileError ? "border-red-400/20 bg-red-500/10" : isCompiling ? "border-amber-400/20 bg-amber-500/10" : "border-emerald-400/20 bg-emerald-500/10"}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      {isCompiling ? (
+                        <div className="w-4 h-4 border-2 border-amber-300/40 border-t-amber-300 rounded-full animate-spin" />
+                      ) : compileError ? (
+                        <svg className="w-4 h-4 text-red-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                      ) : (
+                        <svg className="w-4 h-4 text-emerald-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                      )}
+                      <span className={`text-sm font-medium ${compileError ? "text-red-200" : isCompiling ? "text-amber-200" : "text-emerald-200"}`}>
+                        {isCompiling ? "Compiling…" : compileError ? "Compilation failed" : "Compiled successfully"}
+                      </span>
+                      {compileError && <span className="text-xs text-red-200/70 max-w-md truncate">{compileError}</span>}
                     </div>
                     <div className="flex items-center gap-2">
-                      <button onClick={() => { setCompileError(""); setCompileLog(""); }} className="rounded-xl px-3 py-2 text-sm border border-white/15 bg-white/10 hover:bg-white/15">Dismiss</button>
-                      <button onClick={fixWithAI} disabled={!compileLog.trim() || busy()} className={["rounded-xl px-3 py-2 text-sm font-semibold", compileLog.trim() && !busy() ? "bg-white text-neutral-950 hover:bg-white/90" : "bg-white/20 text-white/60 cursor-not-allowed"].join(" ")}>{isFixing ? "Fixing…" : "Fix with AI"}</button>
+                      {compileError && compileLog.trim() && (
+                        <button onClick={fixWithAI} disabled={busy()} className={`rounded-xl px-3 py-1.5 text-xs font-semibold ${!busy() ? "bg-white text-neutral-950 hover:bg-white/90" : "bg-white/20 text-white/60 cursor-not-allowed"}`}>{isFixing ? "Fixing…" : "Fix with AI"}</button>
+                      )}
+                      <button onClick={() => { setCompileError(""); setCompileLog(""); setConsoleOpen(false); }} className="rounded-lg px-2 py-1 text-xs border border-white/10 bg-white/5 hover:bg-white/10 text-white/40">Clear</button>
                     </div>
                   </div>
-                  {compileLog ? <pre className="mt-3 max-h-44 overflow-auto rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-white/75">{compileLog}</pre> : null}
+                  {compileLog && (
+                    <pre className="mt-2 max-h-36 overflow-auto rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-white/60 font-mono">{compileLog}</pre>
+                  )}
                 </div>
-              ) : null}
+              )}
             </div>
           </section>
         </div>
@@ -916,8 +963,16 @@ function WorkspaceContent() {
           <p className="mt-3 text-white/70">Example: “Generate a formula sheet from my lecture notes (LaTeX + PDF)”.</p>
         </div>
         <div className="mt-10 mx-auto max-w-3xl rounded-2xl border border-white/15 bg-white/10 p-3 backdrop-blur">
-          <div className="flex items-center gap-2">
-            <input ref={inputRef} value={startInput} onChange={(e) => setStartInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) startSend(); }} className="h-10 flex-1 rounded-xl border border-white/15 bg-black/20 px-3 text-sm outline-none placeholder:text-white/45 text-white" placeholder="Ask BetterNotes to create a project that..." />
+          <div className="flex items-center gap-2 relative">
+            <SlashCommandPicker
+              ref={slashPickerStartRef}
+              inputValue={startInput}
+              isPro={usageStatus?.is_paid ?? false}
+              onSelect={(id) => { setSelectedTemplateId(id); setStartInput(""); }}
+              onProBlocked={() => setShowPaywallModal(true)}
+              onDismiss={() => setStartInput("")}
+            />
+            <input ref={inputRef} value={startInput} onChange={(e) => setStartInput(e.target.value)} onKeyDown={(e) => { if (slashPickerStartRef.current?.handleKeyDown(e)) return; if (e.key === "Enter" && !e.shiftKey) startSend(); }} className="h-10 flex-1 rounded-xl border border-white/15 bg-black/20 px-3 text-sm outline-none placeholder:text-white/45 text-white" placeholder="Type / for templates, or describe what to create…" />
             <div className="flex items-center gap-1">
               <button
                 onClick={() => document.getElementById("hidden-file-input-start")?.click()}

@@ -13,6 +13,8 @@ import { uploadProjectFile, getProjectFileUrl } from "@/lib/storage";
 import FileTree from "@/app/components/FileTree";
 import InlineEditMenu from "@/app/components/InlineEditMenu";
 import PaywallModal from "@/app/components/PaywallModal";
+import SlashCommandPicker, { type SlashCommandPickerRef } from "@/app/components/SlashCommandPicker";
+import { templates } from "@/lib/templates";
 import type { User } from "@supabase/supabase-js";
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -68,6 +70,14 @@ export default function ProjectWorkspace() {
 
     // Panels
     const [leftCollapsed, setLeftCollapsed] = useState(false);
+
+    // Slash-command template override (one-shot)
+    const slashPickerRef = useRef<SlashCommandPickerRef>(null);
+    const [templateOverride, setTemplateOverride] = useState<string | null>(null);
+    const selectedTemplate = templateOverride ? templates.find((t) => t.id === templateOverride) ?? null : null;
+
+    // Console panel state
+    const [consoleOpen, setConsoleOpen] = useState(false);
 
     // ── Derived state ──
     const activeEntry = outputFiles.find((f) => f.filePath === activeOutputPath);
@@ -139,6 +149,20 @@ export default function ProjectWorkspace() {
         return () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl); };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Ctrl+S / Cmd+S to save and compile
+    useEffect(() => {
+        function handleKeyDown(e: KeyboardEvent) {
+            if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+                e.preventDefault();
+                if (outputFiles.some((f) => f.content.trim()) && !busy()) {
+                    saveAndCompile();
+                }
+            }
+        }
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    });
 
     // ═══ Output file helpers ═══
     function updateOutputFile(filePath: string, content: string) {
@@ -229,6 +253,8 @@ export default function ProjectWorkspace() {
             setIsGenerating(true);
             const payload: Record<string, unknown> = { prompt };
             if (project?.template_id) payload.templateId = project.template_id;
+            // Use one-shot template override if set
+            if (templateOverride) payload.templateId = templateOverride;
             if (baseLatex?.trim()) payload.baseLatex = baseLatex;
 
             // Inject image awareness
@@ -380,6 +406,9 @@ export default function ProjectWorkspace() {
         if (!allowed) return;
 
         setChatInput("");
+        // Clear one-shot template override after use
+        const usedTemplate = templateOverride;
+        setTemplateOverride(null);
         setMessages((m) => [...m, { role: "user", content: text }, { role: "assistant", content: "Working… generating document..." }]);
 
         const base = mainTex?.content || "";
@@ -593,13 +622,37 @@ export default function ProjectWorkspace() {
                             )}
                         </div>
                     )}
-                    <div className="flex items-center gap-2">
+                    {/* Template override chip */}
+                    {selectedTemplate && (
+                        <div className="mb-2 flex items-center gap-2">
+                            <div className="flex items-center gap-2 rounded-full border border-emerald-400/40 bg-emerald-400/10 pl-1.5 pr-2 py-1">
+                                {selectedTemplate.thumbnailPath && (
+                                    <div className="w-5 h-5 rounded-full overflow-hidden border border-emerald-400/30">
+                                        <img src={selectedTemplate.thumbnailPath} alt="" className="w-full h-full object-cover" />
+                                    </div>
+                                )}
+                                <span className="text-[11px] font-medium text-emerald-300">{selectedTemplate.name}</span>
+                                <button onClick={() => setTemplateOverride(null)} className="ml-0.5 text-emerald-400/50 hover:text-emerald-300 transition-colors">
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                    <div className="flex items-center gap-2 relative">
+                        <SlashCommandPicker
+                            ref={slashPickerRef}
+                            inputValue={chatInput}
+                            isPro={usageStatus?.is_paid ?? false}
+                            onSelect={(id) => { setTemplateOverride(id); setChatInput(""); }}
+                            onProBlocked={() => setShowPaywallModal(true)}
+                            onDismiss={() => setChatInput("")}
+                        />
                         <input
                             value={chatInput}
                             onChange={(e) => setChatInput(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) handleSend(); }}
+                            onKeyDown={(e) => { if (slashPickerRef.current?.handleKeyDown(e)) return; if (e.key === "Enter" && !e.shiftKey) handleSend(); }}
                             className="h-10 flex-1 rounded-xl border border-white/10 bg-black/20 px-3 text-sm outline-none placeholder:text-white/35 text-white"
-                            placeholder="Ask BetterNotes to create…"
+                            placeholder="Type / for templates, or ask BetterNotes…"
                         />
                         <button
                             onClick={handleSend}
@@ -719,22 +772,35 @@ export default function ProjectWorkspace() {
                             )}
                         </div>
 
-                        {/* Compile error */}
-                        {compileError && (
-                            <div className="rounded-xl border border-red-400/20 bg-red-500/10 p-3">
+                        {/* ── Compilation Console ── */}
+                        {(compileError || isCompiling || consoleOpen) && (
+                            <div className={`rounded-xl border p-3 transition-all ${compileError ? "border-red-400/20 bg-red-500/10" : isCompiling ? "border-amber-400/20 bg-amber-500/10" : "border-emerald-400/20 bg-emerald-500/10"}`}>
                                 <div className="flex items-center justify-between gap-2">
-                                    <div>
-                                        <div className="text-sm font-semibold text-red-200">Compilation failed</div>
-                                        <div className="text-xs text-red-200/80 mt-0.5">{compileError}</div>
+                                    <div className="flex items-center gap-2">
+                                        {isCompiling ? (
+                                            <div className="w-4 h-4 border-2 border-amber-300/40 border-t-amber-300 rounded-full animate-spin" />
+                                        ) : compileError ? (
+                                            <svg className="w-4 h-4 text-red-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                                        ) : (
+                                            <svg className="w-4 h-4 text-emerald-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                                        )}
+                                        <span className={`text-sm font-medium ${compileError ? "text-red-200" : isCompiling ? "text-amber-200" : "text-emerald-200"}`}>
+                                            {isCompiling ? "Compiling…" : compileError ? "Compilation failed" : "Compiled successfully"}
+                                        </span>
+                                        {compileError && <span className="text-xs text-red-200/70 max-w-sm truncate">{compileError}</span>}
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <button onClick={() => { setCompileError(""); setCompileLog(""); }} className="rounded-lg px-2.5 py-1.5 text-xs border border-white/10 bg-white/8 hover:bg-white/12">Dismiss</button>
-                                        <button onClick={fixWithAI} disabled={!compileLog.trim() || busy()} className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold ${compileLog.trim() && !busy() ? "bg-white text-neutral-950 hover:bg-white/90" : "bg-white/15 text-white/40 cursor-not-allowed"}`}>
-                                            {isFixing ? "Fixing…" : "Fix with AI"}
-                                        </button>
+                                        {compileError && compileLog.trim() && (
+                                            <button onClick={fixWithAI} disabled={busy()} className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold ${!busy() ? "bg-white text-neutral-950 hover:bg-white/90" : "bg-white/15 text-white/40 cursor-not-allowed"}`}>
+                                                {isFixing ? "Fixing…" : "Fix with AI"}
+                                            </button>
+                                        )}
+                                        <button onClick={() => { setCompileError(""); setCompileLog(""); setConsoleOpen(false); }} className="rounded-lg px-2 py-1 text-xs border border-white/8 bg-white/5 hover:bg-white/10 text-white/40">Clear</button>
                                     </div>
                                 </div>
-                                {compileLog && <pre className="mt-2 max-h-32 overflow-auto rounded-lg border border-white/8 bg-black/30 p-2 text-xs text-white/60">{compileLog}</pre>}
+                                {compileLog && (
+                                    <pre className="mt-2 max-h-32 overflow-auto rounded-lg border border-white/8 bg-black/30 p-2 text-xs text-white/60 font-mono">{compileLog}</pre>
+                                )}
                             </div>
                         )}
                     </div>

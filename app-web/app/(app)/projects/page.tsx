@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { Suspense, useEffect, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { listProjects, createProject, type Project } from "@/lib/api";
 import { supabase } from "@/supabaseClient";
@@ -11,6 +11,14 @@ import type { User } from "@supabase/supabase-js";
 type Filter = "all" | "starred" | "shared";
 
 export default function ProjectsPage() {
+    return (
+        <Suspense fallback={<div className="flex items-center justify-center h-full min-h-[60vh]"><div className="text-white/40 text-sm">Loading projects…</div></div>}>
+            <ProjectsContent />
+        </Suspense>
+    );
+}
+
+function ProjectsContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const [user, setUser] = useState<User | null>(null);
@@ -127,8 +135,8 @@ export default function ProjectsPage() {
                             key={key}
                             onClick={() => setFilter(key)}
                             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === key
-                                    ? "bg-white/15 text-white"
-                                    : "text-white/50 hover:text-white/70"
+                                ? "bg-white/15 text-white"
+                                : "text-white/50 hover:text-white/70"
                                 }`}
                         >
                             {label}
@@ -192,8 +200,8 @@ export default function ProjectsPage() {
                                     key={t.id}
                                     onClick={() => setNewTemplateId(newTemplateId === t.id ? null : t.id)}
                                     className={`rounded-xl border px-3 py-2 text-xs text-left transition-colors ${newTemplateId === t.id
-                                            ? "border-purple-500/50 bg-purple-500/10 text-white"
-                                            : "border-white/10 bg-white/5 text-white/60 hover:bg-white/8"
+                                        ? "border-purple-500/50 bg-purple-500/10 text-white"
+                                        : "border-white/10 bg-white/5 text-white/60 hover:bg-white/8"
                                         }`}
                                 >
                                     {t.name}
