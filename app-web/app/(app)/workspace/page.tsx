@@ -1070,6 +1070,16 @@ function WorkspaceContent() {
           </section>
         </div>
         <PaywallModal isOpen={showPaywallModal} onClose={() => setShowPaywallModal(false)} remaining={usageStatus?.remaining} resetsAt={usageStatus?.resets_at} />
+        <SaveProjectModal
+          open={showSaveModal}
+          onClose={() => setShowSaveModal(false)}
+          latex={draftLatex}
+          messages={messages}
+          templateId={selectedTemplateId}
+          onSaved={(projectId) => {
+            if (projectId) router.push(`/workspace/${projectId}`);
+          }}
+        />
       </main>
     );
   }

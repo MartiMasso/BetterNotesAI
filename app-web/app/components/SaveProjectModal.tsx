@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { createProject, listProjects, saveOutputFile, saveChat, type Project } from "@/lib/api";
 import { useToast } from "@/app/components/Toast";
 
@@ -96,8 +97,8 @@ export default function SaveProjectModal({ open, onClose, latex, messages, templ
 
     if (!open) return null;
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+    const modal = (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
             <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-neutral-900 shadow-2xl" onClick={e => e.stopPropagation()}>
                 {/* Header */}
                 <div className="px-6 pt-5 pb-4 border-b border-white/8">
@@ -116,8 +117,8 @@ export default function SaveProjectModal({ open, onClose, latex, messages, templ
                             key={t.key}
                             onClick={() => setTab(t.key)}
                             className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-xs font-medium transition-all ${tab === t.key
-                                    ? "bg-white text-neutral-950"
-                                    : "text-white/50 hover:text-white/70 hover:bg-white/5"
+                                ? "bg-white text-neutral-950"
+                                : "text-white/50 hover:text-white/70 hover:bg-white/5"
                                 }`}
                         >
                             <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
@@ -164,8 +165,8 @@ export default function SaveProjectModal({ open, onClose, latex, messages, templ
                                             key={v.key}
                                             onClick={() => setVisibility(v.key)}
                                             className={`flex-1 rounded-xl border px-3 py-2 text-left transition-all ${visibility === v.key
-                                                    ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-300"
-                                                    : "border-white/10 bg-white/5 text-white/50 hover:bg-white/8"
+                                                ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-300"
+                                                : "border-white/10 bg-white/5 text-white/50 hover:bg-white/8"
                                                 }`}
                                         >
                                             <div className="text-xs font-medium">{v.label}</div>
@@ -196,8 +197,8 @@ export default function SaveProjectModal({ open, onClose, latex, messages, templ
                                             key={p.id}
                                             onClick={() => setSelectedProjectId(p.id)}
                                             className={`w-full text-left rounded-xl border px-4 py-3 transition-all ${selectedProjectId === p.id
-                                                    ? "border-emerald-400/40 bg-emerald-500/10"
-                                                    : "border-white/8 bg-white/[0.02] hover:bg-white/5 hover:border-white/12"
+                                                ? "border-emerald-400/40 bg-emerald-500/10"
+                                                : "border-white/8 bg-white/[0.02] hover:bg-white/5 hover:border-white/12"
                                                 }`}
                                         >
                                             <div className="text-sm text-white font-medium truncate">{p.title}</div>
@@ -205,8 +206,8 @@ export default function SaveProjectModal({ open, onClose, latex, messages, templ
                                                 {p.description && <span className="text-[10px] text-white/30 truncate">{p.description}</span>}
                                                 <span className="text-[10px] text-white/20">{new Date(p.updated_at).toLocaleDateString()}</span>
                                                 <span className={`text-[9px] px-1.5 py-0.5 rounded-md ${p.visibility === "public" ? "bg-emerald-500/15 text-emerald-300/60" :
-                                                        p.visibility === "unlisted" ? "bg-amber-500/15 text-amber-300/60" :
-                                                            "bg-white/5 text-white/30"
+                                                    p.visibility === "unlisted" ? "bg-amber-500/15 text-amber-300/60" :
+                                                        "bg-white/5 text-white/30"
                                                     }`}>{p.visibility}</span>
                                             </div>
                                         </button>
@@ -257,4 +258,7 @@ export default function SaveProjectModal({ open, onClose, latex, messages, templ
             </div>
         </div>
     );
+
+    // Use portal to render at body level, above all stacking contexts
+    return typeof document !== "undefined" ? createPortal(modal, document.body) : null;
 }
