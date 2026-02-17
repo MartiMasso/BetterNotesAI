@@ -221,3 +221,143 @@ export async function compileLatexToPdf(
     } catch { }
   }
 }
+
+
+/* -------------------------
+   multi-file project compile
+------------------------- */
+
+export interface ProjectFile {
+  path: string;   // e.g. "main.tex", "chapters/ch1.tex", "figures/plot.png"
+  content: string; // text content OR base64 for binary
+  isBinary?: boolean;
+}
+
+/**
+ * Compile a multi-file LaTeX project.
+ * Writes all files to a temp directory preserving subdirectory structure,
+ * then runs latexmk/pdflatex on the specified main file.
+ */
+export async function compileMultiFileProject(
+  files: ProjectFile[],
+  mainFile: string,
+  opts: { timeoutMs: number }
+): Promise<{ pdf: Buffer; log: string }> {
+  if (!files.length) {
+    throw makeHttpError("No files provided.", 400, undefined, "NO_FILES");
+  }
+  if (!files.some((f) => f.path === mainFile)) {
+    throw makeHttpError(
+      `Main file "${mainFile}" not found in provided files.`,
+      400,
+      undefined,
+      "MAIN_FILE_NOT_FOUND"
+    );
+  }
+
+  const workDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "betternotes-project-"));
+  const pdfName = mainFile.replace(/\.tex$/, ".pdf");
+  const logName = mainFile.replace(/\.tex$/, ".log");
+
+  try {
+    // Write all files to the temp directory
+    for (const file of files) {
+      const absPath = path.join(workDir, file.path);
+      const dir = path.dirname(absPath);
+      await fs.promises.mkdir(dir, { recursive: true });
+
+      if (file.isBinary) {
+        // Binary files are base64-encoded
+        const buf = Buffer.from(file.content, "base64");
+        await fs.promises.writeFile(absPath, buf);
+      } else {
+        // Text files — apply fallbacks only to .tex files
+        let content = file.content;
+        if (file.path.endsWith(".tex")) {
+          content = applyLatexFallbacks(content);
+        }
+        await fs.promises.writeFile(absPath, content, "utf8");
+      }
+    }
+
+    // Compile
+    let log = "";
+    const hasLatexmk = await commandExists("latexmk");
+    const mainDir = path.dirname(path.join(workDir, mainFile));
+    const mainBasename = path.basename(mainFile);
+
+    if (hasLatexmk) {
+      try {
+        const { stdout, stderr } = await execFileAsync(
+          "latexmk",
+          ["-pdf", "-bibtex-", "-interaction=nonstopmode", "-halt-on-error", "-file-line-error", mainBasename],
+          { cwd: mainDir, timeout: opts.timeoutMs, maxBuffer: 20 * 1024 * 1024 }
+        );
+        log += stdout ?? "";
+        log += stderr ?? "";
+      } catch (e: any) {
+        const extra = extractExecOutput(e);
+        log += extra.stdout ?? "";
+        log += extra.stderr ?? "";
+      }
+    } else {
+      const hasPdflatex = await commandExists("pdflatex");
+      if (!hasPdflatex) {
+        throw makeHttpError(
+          "[LATEX_TOOLING_MISSING] Neither latexmk nor pdflatex found.",
+          500,
+          undefined,
+          "LATEX_TOOLING_MISSING"
+        );
+      }
+
+      for (let i = 0; i < 2; i++) {
+        try {
+          const { stdout, stderr } = await execFileAsync(
+            "pdflatex",
+            ["-interaction=nonstopmode", "-halt-on-error", "-file-line-error", mainBasename],
+            { cwd: mainDir, timeout: opts.timeoutMs, maxBuffer: 20 * 1024 * 1024 }
+          );
+          log += stdout ?? "";
+          log += stderr ?? "";
+        } catch (e: any) {
+          const extra = extractExecOutput(e);
+          log += extra.stdout ?? "";
+          log += extra.stderr ?? "";
+          break;
+        }
+      }
+    }
+
+    const pdfPath = path.join(mainDir, path.basename(pdfName));
+    const texLogPath = path.join(mainDir, path.basename(logName));
+
+    if (!fs.existsSync(pdfPath)) {
+      if (fs.existsSync(texLogPath)) {
+        log += "\n\n----- main.log -----\n";
+        log += await fs.promises.readFile(texLogPath, "utf8");
+      }
+      const trimmed = trimHugeLog(log);
+      const isTimeout = trimmed.includes("Timeout") || trimmed.includes("ETIMEDOUT");
+      throw makeHttpError(
+        "Multi-file LaTeX compilation failed.",
+        isTimeout ? 408 : 422,
+        trimmed,
+        isTimeout ? "LATEX_TIMEOUT" : "LATEX_COMPILE_FAILED"
+      );
+    }
+
+    const pdf = await fs.promises.readFile(pdfPath);
+
+    if (fs.existsSync(texLogPath)) {
+      const mainLog = await fs.promises.readFile(texLogPath, "utf8");
+      log += "\n\n----- main.log -----\n" + mainLog;
+    }
+
+    return { pdf, log: trimHugeLog(log) };
+  } finally {
+    try {
+      await fs.promises.rm(workDir, { recursive: true, force: true });
+    } catch { }
+  }
+}

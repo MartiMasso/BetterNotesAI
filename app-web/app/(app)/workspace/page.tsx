@@ -245,6 +245,28 @@ function WorkspaceContent() {
     setPendingDraft(null);
   }, [pendingDraft]);
 
+  const resetWorkspace = useCallback(() => {
+    setMessages([{
+      role: "assistant",
+      content: "Tell me what you want. Example: \u201cGenerate a formula sheet from my lecture notes (LaTeX + PDF)\u201d",
+    }]);
+    setProjectInput("");
+    setDraftLatex("");
+    setSavedLatex("");
+    setCompiledLatex("");
+    setDirty(false);
+    setPdfUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return ""; });
+    setCurrentChatId(null);
+    setFiles([]);
+    setFileError("");
+    setCompileError("");
+    setCompileLog("");
+    setFixCandidate("");
+    setShowFixModal(false);
+    setActiveRightTab("preview");
+    clearWorkspaceDraft();
+  }, []);
+
   const dismissDraft = useCallback(() => {
     clearWorkspaceDraft();
     setShowRestoreBanner(false);
@@ -443,7 +465,7 @@ function WorkspaceContent() {
 
       return { ok: true, latex };
     } catch (e: any) {
-      if (e.name === 'AbortError') return { ok: false, error: "Request timed out (60s)." };
+      if (e.name === 'AbortError') return { ok: false, error: "Request timed out (180s)." };
       return { ok: false, error: e?.message ?? "Generate error" };
     } finally {
       setIsGenerating(false);
@@ -735,7 +757,7 @@ function WorkspaceContent() {
                 <div className="text-sm font-semibold">Project</div>
                 <div className="text-xs text-white/60">Chat → LaTeX → PDF</div>
               </div>
-              <button onClick={() => setMode("start")} className="text-xs rounded-xl border border-white/15 bg-white/10 px-2 py-1 hover:bg-white/15">← Back</button>
+              <button onClick={() => { resetWorkspace(); setMode("start"); }} className="text-xs rounded-xl border border-white/15 bg-white/10 px-2 py-1 hover:bg-white/15">← Back</button>
             </div>
             <div className="flex-1 overflow-auto px-4 py-4 space-y-3">
               {messages.map((m, idx) => (
@@ -815,7 +837,7 @@ function WorkspaceContent() {
 
                 <button
                   onClick={projectSend}
-                  className={["h-10 rounded-xl px-4 text-sm font-semibold self-end", projectInput.trim().length > 0 || files.length > 0 && !busy() ? "bg-white text-neutral-950 hover:bg-white/90" : "bg-white/20 text-white/60 cursor-not-allowed"].join(" ")}
+                  className={["h-10 rounded-xl px-4 text-sm font-semibold self-end", (projectInput.trim().length > 0 || files.length > 0) && !busy() ? "bg-white text-neutral-950 hover:bg-white/90" : "bg-white/20 text-white/60 cursor-not-allowed"].join(" ")}
                 >
                   {isGenerating ? "Generating…" : isCompiling ? "Compiling…" : isFixing ? "Fixing…" : "Send"}
                 </button>

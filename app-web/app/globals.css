@@ -2,50 +2,91 @@
 
 /* ---- Design Tokens ---- */
 
-:root {
+/* Light mode (default or explicit .light class) */
+:root,
+.light {
   --background: #ffffff;
   --foreground: #171717;
-  
+
   --card: #ffffff;
   --card-foreground: #171717;
-  
+
   --muted: #f5f5f5;
   --muted-foreground: #737373;
-  
+
   --border: #e5e5e5;
-  
+
   --primary: #171717;
   --primary-foreground: #ffffff;
-  
+
   --accent: #f5f5f5;
   --accent-foreground: #171717;
-  
+
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
 }
 
+/* Dark mode fallback: system preference (only if no explicit class) */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not(.light):not(.dark) {
     --background: #0a0a0a;
     --foreground: #ededed;
-    
+
     --card: rgba(255, 255, 255, 0.05);
     --card-foreground: #ededed;
-    
+
     --muted: #262626;
     --muted-foreground: #a3a3a3;
-    
+
     --border: rgba(255, 255, 255, 0.15);
-    
+
     --primary: #ffffff;
     --primary-foreground: #0a0a0a;
-    
+
     --accent: rgba(255, 255, 255, 0.1);
     --accent-foreground: #ededed;
-    
+
     --destructive: #dc2626;
     --destructive-foreground: #ffffff;
   }
+}
+
+/* Explicit .dark class always wins */
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+
+  --card: rgba(255, 255, 255, 0.05);
+  --card-foreground: #ededed;
+
+  --muted: #262626;
+  --muted-foreground: #a3a3a3;
+
+  --border: rgba(255, 255, 255, 0.15);
+
+  --primary: #ffffff;
+  --primary-foreground: #0a0a0a;
+
+  --accent: rgba(255, 255, 255, 0.1);
+  --accent-foreground: #ededed;
+
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+}
+
+/* ---- Light Mode: Global Color Flip ---- */
+/*
+ * In light mode, swap the Tailwind color primitives so that
+ * text-white/60, bg-white/5, border-white/10 etc. all become
+ * dark-on-light automatically. No per-component changes needed.
+ */
+.light {
+  --color-white: #171717;
+  --color-black: #ffffff;
+
+  /* Fix neutral backgrounds used as dark panels */
+  --color-neutral-950: #f5f5f5;
+  --color-neutral-900: #fafafa;
 }
 
 /* ---- Tailwind Theme ---- */
@@ -64,7 +105,7 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
-  
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -83,6 +124,7 @@ body {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
@@ -90,24 +132,84 @@ body {
 /* ---- Animations ---- */
 
 @keyframes blob1 {
-  0%   { transform: translate(-50%, 0) scale(1); }
-  33%  { transform: translate(-45%, 20px) scale(1.05); }
-  66%  { transform: translate(-55%, -10px) scale(0.98); }
-  100% { transform: translate(-50%, 0) scale(1); }
-}
-@keyframes blob2 {
-  0%   { transform: translate(0, 0) scale(1); }
-  33%  { transform: translate(30px, -20px) scale(1.06); }
-  66%  { transform: translate(-10px, 20px) scale(0.98); }
-  100% { transform: translate(0, 0) scale(1); }
-}
-@keyframes blob3 {
-  0%   { transform: translate(0, 0) scale(1); }
-  33%  { transform: translate(-20px, 10px) scale(1.05); }
-  66%  { transform: translate(20px, -10px) scale(0.99); }
-  100% { transform: translate(0, 0) scale(1); }
+  0% {
+    transform: translate(-50%, 0) scale(1);
+  }
+
+  33% {
+    transform: translate(-45%, 20px) scale(1.05);
+  }
+
+  66% {
+    transform: translate(-55%, -10px) scale(0.98);
+  }
+
+  100% {
+    transform: translate(-50%, 0) scale(1);
+  }
 }
 
-.animate-blob1 { animation: blob1 14s ease-in-out infinite; }
-.animate-blob2 { animation: blob2 16s ease-in-out infinite; }
-.animate-blob3 { animation: blob3 18s ease-in-out infinite; }
+@keyframes blob2 {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  33% {
+    transform: translate(30px, -20px) scale(1.06);
+  }
+
+  66% {
+    transform: translate(-10px, 20px) scale(0.98);
+  }
+
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+@keyframes blob3 {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  33% {
+    transform: translate(-20px, 10px) scale(1.05);
+  }
+
+  66% {
+    transform: translate(20px, -10px) scale(0.99);
+  }
+
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+.animate-blob1 {
+  animation: blob1 14s ease-in-out infinite;
+}
+
+.animate-blob2 {
+  animation: blob2 16s ease-in-out infinite;
+}
+
+.animate-blob3 {
+  animation: blob3 18s ease-in-out infinite;
+}
+
+/* Search modal entrance */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-in {
+  animation: fadeIn 0.15s ease-out;
+}

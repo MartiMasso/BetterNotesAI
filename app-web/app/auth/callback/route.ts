@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
@@ -8,15 +8,29 @@ export async function GET(request: NextRequest) {
     const next = requestUrl.searchParams.get("next") ?? "/workspace";
 
     if (code) {
-        const supabase = createClient(
+        const res = NextResponse.redirect(new URL(next, requestUrl.origin));
+
+        const supabase = createServerClient(
             process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+            {
+                cookies: {
+                    getAll() {
+                        return request.cookies.getAll();
+                    },
+                    setAll(cookiesToSet) {
+                        cookiesToSet.forEach(({ name, value, options }) => {
+                            res.cookies.set(name, value, options);
+                        });
+                    },
+                },
+            }
         );
 
         const { error } = await supabase.auth.exchangeCodeForSession(code);
 
         if (!error) {
-            return NextResponse.redirect(new URL(next, requestUrl.origin));
+            return res;
         }
     }
 

@@ -2,7 +2,7 @@
 import express from "express";
 import OpenAI from "openai";
 import { loadTemplateOrThrow, findPlaceholder } from "../lib/templates";
-import { applyLatexFallbacks, stripMarkdownFences, compileLatexToPdf } from "../lib/latex";
+import { applyLatexFallbacks, stripMarkdownFences, compileLatexToPdf, compileMultiFileProject } from "../lib/latex";
 import { trimHugeLog } from "../lib/errors";
 
 type LatexDeps = {
@@ -282,6 +282,43 @@ export function createLatexRouter(deps: LatexDeps) {
     } catch (e: any) {
       const status = Number(e?.statusCode ?? 500);
       return res.status(status).json({ ok: false, error: e?.message ?? "Server error" });
+    }
+  });
+
+  // POST /latex/compile-project
+  // Multi-file LaTeX project compilation
+  router.post("/compile-project", async (req, res) => {
+    try {
+      const files = req.body?.files;
+      const mainFile = String(req.body?.mainFile ?? "main.tex").trim();
+
+      if (!Array.isArray(files) || files.length === 0) {
+        return res.status(400).json({ ok: false, error: "Missing 'files' array." });
+      }
+
+      // Validate file objects
+      for (const f of files) {
+        if (!f.path || typeof f.path !== "string") {
+          return res.status(400).json({ ok: false, error: "Each file must have a 'path' string." });
+        }
+        if (typeof f.content !== "string") {
+          return res.status(400).json({ ok: false, error: `File "${f.path}" is missing 'content'.` });
+        }
+      }
+
+      const { pdf } = await compileMultiFileProject(files, mainFile, {
+        timeoutMs: deps.latexTimeoutMs,
+      });
+
+      res.setHeader("Content-Type", "application/pdf");
+      return res.status(200).send(pdf);
+    } catch (e: any) {
+      const status = Number(e?.statusCode ?? 400);
+      const log = typeof e?.log === "string" ? trimHugeLog(e.log) : undefined;
+      const code = typeof e?.code === "string" ? e.code : undefined;
+      const message = typeof e?.message === "string" ? e.message : "Project compilation failed.";
+
+      return res.status(status).json({ ok: false, error: message, code, log });
     }
   });
 

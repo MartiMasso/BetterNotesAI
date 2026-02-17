@@ -150,6 +150,34 @@ export default function PricingClient({
     }
   }
 
+  async function manageSubscription() {
+    try {
+      if (!supabase) throw new Error("Supabase client not found.");
+      const { data, error } = await supabase.auth.getUser();
+      if (error) throw error;
+      const user = data?.user;
+      if (!user) {
+        window.location.href = "/login";
+        return;
+      }
+
+      const resp = await fetch(`${API_URL}/stripe/create-portal-session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id }),
+      });
+
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json?.error ?? "Failed to create portal session");
+      if (!json?.url) throw new Error("Portal session did not return a URL");
+
+      window.location.href = json.url;
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message ?? "Failed to open subscription management");
+    }
+  }
+
   return (
     <main className="relative min-h-screen text-white">
       <AppBackground />
@@ -241,6 +269,20 @@ export default function PricingClient({
             note="If you generate summaries/formula sheets regularly, this removes friction."
           />
         </div>
+
+        {/* Manage Subscription (Pro users only) */}
+        {currentPlan === "pro" && (
+          <div className="mt-4 text-center">
+            <button
+              type="button"
+              onClick={manageSubscription}
+              className="rounded-xl border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-medium text-white hover:bg-white/15 transition-colors"
+            >
+              Manage Subscription
+            </button>
+            <p className="mt-2 text-xs text-white/50">Update payment, view invoices, or cancel</p>
+          </div>
+        )}
 
         {/* FAQ */}
         <div className="mt-12 grid gap-4 lg:grid-cols-2">
