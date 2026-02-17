@@ -229,6 +229,7 @@ export interface Project {
     template_id: string | null;
     visibility: 'private' | 'public' | 'unlisted';
     is_starred: boolean;
+    is_playground: boolean;
     cover_image_url: string | null;
     tags: string[];
     created_at: string;
@@ -243,6 +244,7 @@ export async function createProject(data: {
     description?: string;
     template_id?: string;
     visibility?: 'private' | 'public' | 'unlisted';
+    is_playground?: boolean;
 }): Promise<Project | null> {
     try {
         const { data: { user } } = await supabase.auth.getUser();
@@ -256,6 +258,7 @@ export async function createProject(data: {
                 description: data.description,
                 template_id: data.template_id,
                 visibility: data.visibility || 'private',
+                is_playground: data.is_playground ?? false,
             })
             .select('*')
             .single();
@@ -326,6 +329,7 @@ export async function deleteProject(projectId: string): Promise<boolean> {
  */
 export async function listProjects(filter?: {
     starred?: boolean;
+    is_playground?: boolean;
     search?: string;
     limit?: number;
 }): Promise<Project[]> {
@@ -334,6 +338,9 @@ export async function listProjects(filter?: {
             .from('projects')
             .select('*')
             .order('updated_at', { ascending: false });
+
+        // Default: exclude playground entries from normal project list
+        query = query.eq('is_playground', filter?.is_playground ?? false);
 
         if (filter?.starred) {
             query = query.eq('is_starred', true);
@@ -363,6 +370,27 @@ export async function listProjects(filter?: {
  */
 export async function starProject(projectId: string, starred: boolean): Promise<boolean> {
     return updateProject(projectId, { is_starred: starred });
+}
+
+/**
+ * Promote a local playground session to cloud.
+ * Creates a project with is_playground=true and bulk-saves all files.
+ */
+export async function promotePlayground(
+    sessionName: string,
+    files: { path: string; content: string }[]
+): Promise<Project | null> {
+    const project = await createProject({
+        title: sessionName || 'Playground Session',
+        is_playground: true,
+    });
+    if (!project) return null;
+
+    // Bulk save all files to output_files
+    for (const f of files) {
+        await saveOutputFile(project.id, f.path, f.content);
+    }
+    return project;
 }
 
 /**
