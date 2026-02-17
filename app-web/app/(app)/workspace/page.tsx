@@ -10,6 +10,7 @@ import SlashCommandPicker, { type SlashCommandPickerRef } from "@/app/components
 import { templates } from "../../../lib/templates";
 import { saveWorkspaceDraft, loadWorkspaceDraft, clearWorkspaceDraft, WorkspaceDraft } from "../../../lib/workspaceDraft";
 import { getUsageStatus, incrementMessageCount, saveChat, updateChat, loadChat, createProject, listProjects, saveOutputFile, UsageStatus } from "../../../lib/api";
+import SaveProjectModal from "@/app/components/SaveProjectModal";
 import { supabase } from "@/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 import { useToast } from "@/app/components/Toast";
@@ -56,47 +57,11 @@ function WorkspaceContent() {
   const { showConfirm, showPrompt } = useDialog();
   const [mode, setMode] = useState<Mode>("start");
 
-  // ── Save conversation to a project (using UI dialogs) ──
-  async function saveToProject() {
+  // ── Save modal state ──
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  function openSaveModal() {
     if (!draftLatex.trim()) { toast("No LaTeX content to save.", "warning"); return; }
-
-    // Ask: new project or existing?
-    const choice = await showConfirm({
-      title: "Save to Project",
-      message: "Where would you like to save this content?",
-      confirmText: "New Project",
-      cancelText: "Existing Project",
-    });
-
-    if (choice) {
-      // ── New project flow ──
-      const title = await showPrompt({ title: "New Project", message: "Enter a name for your project:", placeholder: "My Notes", defaultValue: "Untitled Project", confirmText: "Create" });
-      if (!title) return;
-      const { project, error } = await createProject({ title });
-      if (!project) { toast(error || "Failed to create project.", "error"); return; }
-      await saveOutputFile(project.id, "main.tex", draftLatex);
-      toast(`Project "${title}" created!`, "success");
-      const goNow = await showConfirm({ title: "Open Project?", message: `Would you like to open "${title}" now?`, confirmText: "Open", cancelText: "Stay here" });
-      if (goNow) router.push(`/workspace/${project.id}`);
-    } else {
-      // ── Existing project flow ──
-      const projects = await listProjects({ limit: 50 });
-      if (projects.length === 0) { toast("No projects found. Create one first!", "warning"); return; }
-      const projectNames = projects.map(p => p.title).join("\n");
-      const chosen = await showPrompt({
-        title: "Save to Existing Project",
-        message: `Choose a project:\n${projectNames}\n\nType the exact project name:`,
-        placeholder: "Project name...",
-        confirmText: "Save",
-      });
-      if (!chosen) return;
-      const target = projects.find(p => p.title.toLowerCase() === chosen.toLowerCase());
-      if (!target) { toast(`Project "${chosen}" not found.`, "error"); return; }
-      await saveOutputFile(target.id, "main.tex", draftLatex);
-      toast(`Saved to "${target.title}"!`, "success");
-      const goNow = await showConfirm({ title: "Open Project?", message: `Would you like to open "${target.title}" now?`, confirmText: "Open", cancelText: "Stay here" });
-      if (goNow) router.push(`/workspace/${target.id}`);
-    }
+    setShowSaveModal(true);
   }
 
   // START mode
@@ -1016,7 +981,7 @@ function WorkspaceContent() {
                 <div className="w-px h-7 bg-white/10 mx-1" />
                 <button onClick={saveAndCompile} disabled={!canSaveAndCompile} className={["rounded-xl px-3 py-2 text-sm font-semibold", canSaveAndCompile ? "bg-white text-neutral-950 hover:bg-white/90" : "bg-white/20 text-white/60 cursor-not-allowed"].join(" ")}>Compile</button>
                 <div className="w-px h-7 bg-white/10 mx-1" />
-                <button onClick={saveToProject} disabled={!draftLatex.trim()} className="rounded-xl px-3 py-2 text-sm border border-emerald-400/30 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 disabled:opacity-30 disabled:cursor-not-allowed font-medium" title="Save to a project for later">
+                <button onClick={openSaveModal} disabled={!draftLatex.trim()} className="rounded-xl px-3 py-2 text-sm border border-emerald-400/30 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 disabled:opacity-30 disabled:cursor-not-allowed font-medium" title="Save to a project or chat">
                   <svg className="w-4 h-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" /></svg>
                   Save
                 </button>
@@ -1255,6 +1220,16 @@ function WorkspaceContent() {
         templateId={previewTemplate?.id}
         isPro={previewTemplate?.isPro ?? false}
         userIsPro={usageStatus?.is_paid ?? false}
+      />
+      <SaveProjectModal
+        open={showSaveModal}
+        onClose={() => setShowSaveModal(false)}
+        latex={draftLatex}
+        messages={messages}
+        templateId={selectedTemplateId}
+        onSaved={(projectId) => {
+          if (projectId) router.push(`/workspace/${projectId}`);
+        }}
       />
     </main>
   );
