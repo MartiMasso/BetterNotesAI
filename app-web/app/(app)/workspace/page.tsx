@@ -167,7 +167,40 @@ function WorkspaceContent() {
   const [projectInput, setProjectInput] = useState("");
 
   // RESULT state
-  const [activeRightTab, setActiveRightTab] = useState<"preview" | "latex">("preview");
+  const [activeRightTab, setActiveRightTab] = useState<"preview" | "latex" | "split">("preview");
+
+  // Split-view resizer
+  const [splitRatio, setSplitRatio] = useState(50); // percentage for left (code) panel
+  const splitContainerRef = useRef<HTMLDivElement | null>(null);
+  const isDraggingRef = useRef(false);
+
+  const onSplitMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingRef.current = true;
+    const startX = e.clientX;
+    const startRatio = splitRatio;
+    const container = splitContainerRef.current;
+    if (!container) return;
+    const containerWidth = container.getBoundingClientRect().width;
+
+    function onMove(ev: MouseEvent) {
+      if (!isDraggingRef.current) return;
+      const delta = ev.clientX - startX;
+      const newRatio = Math.min(80, Math.max(20, startRatio + (delta / containerWidth) * 100));
+      setSplitRatio(newRatio);
+    }
+    function onUp() {
+      isDraggingRef.current = false;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [splitRatio]);
 
   const [draftLatex, setDraftLatex] = useState("");
   const [savedLatex, setSavedLatex] = useState("");
@@ -889,6 +922,9 @@ function WorkspaceContent() {
               <div className="flex flex-wrap items-center gap-2">
                 <button onClick={() => setActiveRightTab("preview")} className={["rounded-xl px-3 py-2 text-sm border", activeRightTab === "preview" ? "bg-white text-neutral-950 border-white" : "bg-white/10 text-white/85 border-white/15 hover:bg-white/15"].join(" ")}>Preview</button>
                 <button onClick={() => setActiveRightTab("latex")} className={["rounded-xl px-3 py-2 text-sm border", activeRightTab === "latex" ? "bg-white text-neutral-950 border-white" : "bg-white/10 text-white/85 border-white/15 hover:bg-white/15"].join(" ")}>LaTeX</button>
+                <button onClick={() => setActiveRightTab("split")} className={["rounded-xl px-3 py-2 text-sm border", activeRightTab === "split" ? "bg-white text-neutral-950 border-white" : "bg-white/10 text-white/85 border-white/15 hover:bg-white/15"].join(" ")} title="Side-by-side: Code + Preview">
+                  <svg className="w-4 h-4 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15M4.5 4.5h15a1.5 1.5 0 011.5 1.5v12a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 18V6a1.5 1.5 0 011.5-1.5z" /></svg>
+                </button>
                 <div className="w-px h-7 bg-white/10 mx-1" />
                 <button onClick={saveAndCompile} disabled={!canSaveAndCompile} className={["rounded-xl px-3 py-2 text-sm font-semibold", canSaveAndCompile ? "bg-white text-neutral-950 hover:bg-white/90" : "bg-white/20 text-white/60 cursor-not-allowed"].join(" ")}>Compile</button>
                 <div className="w-px h-7 bg-white/10 mx-1" />
@@ -897,13 +933,37 @@ function WorkspaceContent() {
               </div>
             </div>
             <div className="flex-1 p-5 flex flex-col gap-3">
-              <div className="flex-1 rounded-2xl border border-white/10 bg-white/5 backdrop-blur overflow-hidden">
-                {activeRightTab === "preview" ? (
-                  pdfUrl ? <iframe title="PDF Preview" src={pdfUrl} className="w-full h-full" /> : <div className="h-full flex items-center justify-center text-white/60 text-sm">No PDF yet. Send a prompt on the left.</div>
-                ) : (
-                  <textarea value={draftLatex} onChange={(e) => { setDraftLatex(e.target.value); setDirty(e.target.value !== savedLatex); }} className="w-full h-full bg-transparent p-4 font-mono text-sm outline-none text-white/90" placeholder="LaTeX will appear here…" />
-                )}
-              </div>
+              {activeRightTab === "split" ? (
+                /* ── Split view ── */
+                <div ref={splitContainerRef} className="flex-1 flex rounded-2xl border border-white/10 bg-white/5 backdrop-blur overflow-hidden">
+                  {/* Code panel */}
+                  <div style={{ width: `${splitRatio}%` }} className="flex flex-col min-w-0">
+                    <div className="px-3 py-1.5 border-b border-white/8 text-[10px] text-white/30 font-semibold uppercase tracking-wider">LaTeX</div>
+                    <textarea value={draftLatex} onChange={(e) => { setDraftLatex(e.target.value); setDirty(e.target.value !== savedLatex); }} className="flex-1 w-full bg-transparent p-4 font-mono text-sm outline-none text-white/90 resize-none" placeholder="LaTeX will appear here…" />
+                  </div>
+                  {/* Draggable divider */}
+                  <div onMouseDown={onSplitMouseDown} className="w-1.5 bg-white/8 hover:bg-white/20 cursor-col-resize transition-colors flex-shrink-0 relative group">
+                    <div className="absolute inset-y-0 -left-1 -right-1" />
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-0.5 h-8 rounded-full bg-white/20 group-hover:bg-white/40 transition-colors" />
+                  </div>
+                  {/* Preview panel */}
+                  <div style={{ width: `${100 - splitRatio}%` }} className="flex flex-col min-w-0">
+                    <div className="px-3 py-1.5 border-b border-white/8 text-[10px] text-white/30 font-semibold uppercase tracking-wider">Preview</div>
+                    <div className="flex-1">
+                      {pdfUrl ? <iframe title="PDF Preview" src={pdfUrl} className="w-full h-full" /> : <div className="h-full flex items-center justify-center text-white/40 text-sm">No PDF yet</div>}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* ── Single panel (Preview or LaTeX) ── */
+                <div className="flex-1 rounded-2xl border border-white/10 bg-white/5 backdrop-blur overflow-hidden">
+                  {activeRightTab === "preview" ? (
+                    pdfUrl ? <iframe title="PDF Preview" src={pdfUrl} className="w-full h-full" /> : <div className="h-full flex items-center justify-center text-white/60 text-sm">No PDF yet. Send a prompt on the left.</div>
+                  ) : (
+                    <textarea value={draftLatex} onChange={(e) => { setDraftLatex(e.target.value); setDirty(e.target.value !== savedLatex); }} className="w-full h-full bg-transparent p-4 font-mono text-sm outline-none text-white/90" placeholder="LaTeX will appear here…" />
+                  )}
+                </div>
+              )}
               {/* ── Compilation Console ── */}
               {(compileError || isCompiling || consoleOpen) && (
                 <div className={`rounded-2xl border p-3 transition-all ${compileError ? "border-red-400/20 bg-red-500/10" : isCompiling ? "border-amber-400/20 bg-amber-500/10" : "border-emerald-400/20 bg-emerald-500/10"}`}>

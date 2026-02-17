@@ -52,7 +52,40 @@ export default function ProjectWorkspace() {
     const [outputFiles, setOutputFiles] = useState<OutputEntry[]>([]);
     const [activeOutputPath, setActiveOutputPath] = useState<string>("main.tex");
     const [pdfUrl, setPdfUrl] = useState("");
-    const [activeTab, setActiveTab] = useState<"preview" | "latex">("preview");
+    const [activeTab, setActiveTab] = useState<"preview" | "latex" | "split">("preview");
+
+    // Split-view resizer
+    const [splitRatio, setSplitRatio] = useState(50);
+    const splitContainerRef = useRef<HTMLDivElement | null>(null);
+    const isDraggingRef = useRef(false);
+
+    const onSplitMouseDown = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        isDraggingRef.current = true;
+        const startX = e.clientX;
+        const startRatio = splitRatio;
+        const container = splitContainerRef.current;
+        if (!container) return;
+        const containerWidth = container.getBoundingClientRect().width;
+
+        function onMove(ev: MouseEvent) {
+            if (!isDraggingRef.current) return;
+            const delta = ev.clientX - startX;
+            const newRatio = Math.min(80, Math.max(20, startRatio + (delta / containerWidth) * 100));
+            setSplitRatio(newRatio);
+        }
+        function onUp() {
+            isDraggingRef.current = false;
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+            document.body.style.cursor = "";
+            document.body.style.userSelect = "";
+        }
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+    }, [splitRatio]);
 
     // Status flags
     const [isGenerating, setIsGenerating] = useState(false);
@@ -693,6 +726,9 @@ export default function ProjectWorkspace() {
                     <div className="flex flex-wrap items-center gap-1.5">
                         <button onClick={() => setActiveTab("preview")} className={`rounded-lg px-2.5 py-1.5 text-xs border ${activeTab === "preview" ? "bg-white text-neutral-950 border-white" : "bg-white/8 text-white/70 border-white/10 hover:bg-white/12"}`}>Preview</button>
                         <button onClick={() => setActiveTab("latex")} className={`rounded-lg px-2.5 py-1.5 text-xs border ${activeTab === "latex" ? "bg-white text-neutral-950 border-white" : "bg-white/8 text-white/70 border-white/10 hover:bg-white/12"}`}>LaTeX</button>
+                        <button onClick={() => setActiveTab("split")} className={`rounded-lg px-2.5 py-1.5 text-xs border ${activeTab === "split" ? "bg-white text-neutral-950 border-white" : "bg-white/8 text-white/70 border-white/10 hover:bg-white/12"}`} title="Side-by-side: Code + Preview">
+                            <svg className="w-3.5 h-3.5 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15M4.5 4.5h15a1.5 1.5 0 011.5 1.5v12a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 18V6a1.5 1.5 0 011.5-1.5z" /></svg>
+                        </button>
                         <div className="w-px h-5 bg-white/10 mx-0.5" />
                         <button onClick={saveAndCompile} disabled={!canCompile} className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold ${canCompile ? "bg-white text-neutral-950 hover:bg-white/90" : "bg-white/15 text-white/40 cursor-not-allowed"}`}>
                             {isCompiling ? "Compiling…" : "Compile"}
@@ -708,8 +744,8 @@ export default function ProjectWorkspace() {
 
                 {/* Content area */}
                 <div className="flex-1 flex min-h-0">
-                    {/* Output file tree (only visible in LaTeX tab with multiple files) */}
-                    {activeTab === "latex" && (
+                    {/* Output file tree (visible in LaTeX and Split tabs with multiple files) */}
+                    {(activeTab === "latex" || activeTab === "split") && (
                         <div className="w-48 border-r border-white/8 flex flex-col">
                             <div className="flex items-center justify-between px-3 py-2 border-b border-white/8">
                                 <span className="text-[10px] font-semibold text-white/30 uppercase tracking-wider">Output Files</span>
@@ -749,28 +785,61 @@ export default function ProjectWorkspace() {
 
                     {/* Main content */}
                     <div className="flex-1 flex flex-col min-h-0 p-4 gap-3">
-                        <div className="flex-1 rounded-2xl border border-white/8 bg-white/[0.03] overflow-hidden relative">
-                            {activeTab === "preview" ? (
-                                pdfUrl ? (
-                                    <iframe title="PDF Preview" src={pdfUrl} className="w-full h-full" />
-                                ) : (
-                                    <div className="h-full flex items-center justify-center text-white/30 text-sm">
-                                        No PDF yet. Send a prompt or compile.
+                        {activeTab === "split" ? (
+                            /* ── Split view ── */
+                            <div ref={splitContainerRef} className="flex-1 flex rounded-2xl border border-white/8 bg-white/[0.03] overflow-hidden">
+                                {/* Code panel */}
+                                <div style={{ width: `${splitRatio}%` }} className="flex flex-col min-w-0">
+                                    <div className="px-3 py-1.5 border-b border-white/8 text-[10px] text-white/30 font-semibold uppercase tracking-wider">LaTeX — {activeOutputPath}</div>
+                                    <div className="relative flex-1">
+                                        <textarea
+                                            ref={editorRef}
+                                            value={activeContent}
+                                            onChange={(e) => updateOutputFile(activeOutputPath, e.target.value)}
+                                            className="w-full h-full bg-transparent p-4 font-mono text-sm outline-none text-white/90 resize-none"
+                                            placeholder={`${activeOutputPath} — start typing LaTeX…`}
+                                        />
+                                        <InlineEditMenu containerRef={editorRef} onAction={handleInlineAction} />
                                     </div>
-                                )
-                            ) : (
-                                <div className="relative h-full">
-                                    <textarea
-                                        ref={editorRef}
-                                        value={activeContent}
-                                        onChange={(e) => updateOutputFile(activeOutputPath, e.target.value)}
-                                        className="w-full h-full bg-transparent p-4 font-mono text-sm outline-none text-white/90 resize-none"
-                                        placeholder={`${activeOutputPath} — start typing LaTeX…`}
-                                    />
-                                    <InlineEditMenu containerRef={editorRef} onAction={handleInlineAction} />
                                 </div>
-                            )}
-                        </div>
+                                {/* Draggable divider */}
+                                <div onMouseDown={onSplitMouseDown} className="w-1.5 bg-white/8 hover:bg-white/20 cursor-col-resize transition-colors flex-shrink-0 relative group">
+                                    <div className="absolute inset-y-0 -left-1 -right-1" />
+                                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-0.5 h-8 rounded-full bg-white/20 group-hover:bg-white/40 transition-colors" />
+                                </div>
+                                {/* Preview panel */}
+                                <div style={{ width: `${100 - splitRatio}%` }} className="flex flex-col min-w-0">
+                                    <div className="px-3 py-1.5 border-b border-white/8 text-[10px] text-white/30 font-semibold uppercase tracking-wider">Preview</div>
+                                    <div className="flex-1">
+                                        {pdfUrl ? <iframe title="PDF Preview" src={pdfUrl} className="w-full h-full" /> : <div className="h-full flex items-center justify-center text-white/30 text-sm">No PDF yet</div>}
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            /* ── Single panel ── */
+                            <div className="flex-1 rounded-2xl border border-white/8 bg-white/[0.03] overflow-hidden relative">
+                                {activeTab === "preview" ? (
+                                    pdfUrl ? (
+                                        <iframe title="PDF Preview" src={pdfUrl} className="w-full h-full" />
+                                    ) : (
+                                        <div className="h-full flex items-center justify-center text-white/30 text-sm">
+                                            No PDF yet. Send a prompt or compile.
+                                        </div>
+                                    )
+                                ) : (
+                                    <div className="relative h-full">
+                                        <textarea
+                                            ref={editorRef}
+                                            value={activeContent}
+                                            onChange={(e) => updateOutputFile(activeOutputPath, e.target.value)}
+                                            className="w-full h-full bg-transparent p-4 font-mono text-sm outline-none text-white/90 resize-none"
+                                            placeholder={`${activeOutputPath} — start typing LaTeX…`}
+                                        />
+                                        <InlineEditMenu containerRef={editorRef} onAction={handleInlineAction} />
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* ── Compilation Console ── */}
                         {(compileError || isCompiling || consoleOpen) && (
