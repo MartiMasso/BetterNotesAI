@@ -12,12 +12,27 @@ import { createStripeRouter } from "./routes/stripe";
 
 const app = express();
 
+function readEnv(name: string): string {
+  const raw = process.env[name];
+  if (typeof raw !== "string") return "";
+  let value = raw.replace(/\r/g, "").trim();
+
+  // Common production copy/paste issue: values pasted with surrounding quotes.
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1).trim();
+  }
+  return value;
+}
+
 // -------------------------
 // Env / Config
 // -------------------------
 const PORT = Number(process.env.PORT ?? 4000);
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
+const OPENAI_API_KEY = readEnv("OPENAI_API_KEY");
 if (!OPENAI_API_KEY) {
   console.warn("[WARN] OPENAI_API_KEY is not set. /generate-latex and /fix-latex will fail.");
 }
@@ -30,16 +45,16 @@ const TEMPLATE_DIR = process.env.TEMPLATE_DIR
 const MAX_JSON_SIZE = process.env.MAX_JSON_SIZE ?? "6mb";
 const LATEX_TIMEOUT_MS = Number(process.env.LATEX_TIMEOUT_MS ?? 180000);
 
-const allowedOriginsRaw = (process.env.ALLOWED_ORIGINS ?? "").trim();
+const allowedOriginsRaw = readEnv("ALLOWED_ORIGINS");
 const allowedOrigins = allowedOriginsRaw
   ? allowedOriginsRaw.split(",").map((s) => s.trim()).filter(Boolean)
   : null;
 
 // Stripe / Supabase (server-only)
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY ?? "";
-const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET ?? "";
-const SITE_URL = process.env.SITE_URL ?? "http://localhost:3000";
-const STRIPE_PRICE_PRO_MONTHLY = process.env.STRIPE_PRICE_PRO_MONTHLY ?? "";
+const STRIPE_SECRET_KEY = readEnv("STRIPE_SECRET_KEY");
+const STRIPE_WEBHOOK_SECRET = readEnv("STRIPE_WEBHOOK_SECRET");
+const SITE_URL = readEnv("SITE_URL") || "http://localhost:3000";
+const STRIPE_PRICE_PRO_MONTHLY = readEnv("STRIPE_PRICE_PRO_MONTHLY");
 
 if (!STRIPE_SECRET_KEY) {
   console.warn("[WARN] STRIPE_SECRET_KEY is not set. Stripe routes will fail.");
@@ -48,8 +63,8 @@ if (!STRIPE_WEBHOOK_SECRET) {
   console.warn("[WARN] STRIPE_WEBHOOK_SECRET is not set. /stripe/webhook signature verification will fail.");
 }
 
-const SUPABASE_URL = process.env.SUPABASE_URL ?? "";
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+const SUPABASE_URL = readEnv("SUPABASE_URL");
+const SUPABASE_SERVICE_ROLE_KEY = readEnv("SUPABASE_SERVICE_ROLE_KEY");
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.warn("[WARN] SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set. Stripe webhook DB sync will fail.");
 }

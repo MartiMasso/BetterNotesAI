@@ -6,7 +6,11 @@ import { useToast } from "@/app/components/Toast";
 import * as supabaseMod from "@/supabaseClient";
 
 const supabase: any = (supabaseMod as any).supabase ?? (supabaseMod as any).default;
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const API_URL = (
+    process.env.NEXT_PUBLIC_API_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:4000"
+).replace(/\/$/, "");
 
 // Set these in app-web/.env.local
 // NEXT_PUBLIC_STRIPE_PRICE_PRO_MONTHLY=price_...
