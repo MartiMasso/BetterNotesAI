@@ -15,7 +15,7 @@ const app = express();
 function readEnv(name: string): string {
   const raw = process.env[name];
   if (typeof raw !== "string") return "";
-  let value = raw.replace(/\r/g, "").trim();
+  let value = raw.replace(/\r/g, "").replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
 
   // Common production copy/paste issue: values pasted with surrounding quotes.
   if (
@@ -25,6 +25,29 @@ function readEnv(name: string): string {
     value = value.slice(1, -1).trim();
   }
   return value;
+}
+
+function readStripeSecretEnv(name: string): string {
+  // Stripe secrets should never contain whitespace; remove it defensively to avoid
+  // production copy/paste issues (Railway/Vercel UI, password managers, etc.).
+  return readEnv(name).replace(/\s+/g, "");
+}
+
+function describeStripeKey(key: string) {
+  if (!key) return { present: false, mode: "missing", length: 0 };
+  const mode = key.startsWith("sk_live_")
+    ? "live"
+    : key.startsWith("sk_test_")
+      ? "test"
+      : key.startsWith("rk_")
+        ? "restricted"
+        : "unknown";
+  return {
+    present: true,
+    mode,
+    length: key.length,
+    startsWithSk: key.startsWith("sk_"),
+  };
 }
 
 // -------------------------
@@ -51,8 +74,8 @@ const allowedOrigins = allowedOriginsRaw
   : null;
 
 // Stripe / Supabase (server-only)
-const STRIPE_SECRET_KEY = readEnv("STRIPE_SECRET_KEY");
-const STRIPE_WEBHOOK_SECRET = readEnv("STRIPE_WEBHOOK_SECRET");
+const STRIPE_SECRET_KEY = readStripeSecretEnv("STRIPE_SECRET_KEY");
+const STRIPE_WEBHOOK_SECRET = readStripeSecretEnv("STRIPE_WEBHOOK_SECRET");
 const SITE_URL = readEnv("SITE_URL") || "http://localhost:3000";
 const STRIPE_PRICE_PRO_MONTHLY = readEnv("STRIPE_PRICE_PRO_MONTHLY");
 
@@ -133,6 +156,12 @@ app.get("/health", (_req, res) => {
     hasOpenAIKey: Boolean(OPENAI_API_KEY),
     hasStripeKey: Boolean(STRIPE_SECRET_KEY),
     hasWebhookSecret: Boolean(STRIPE_WEBHOOK_SECRET),
+    stripeKeyInfo: describeStripeKey(STRIPE_SECRET_KEY),
+    stripeWebhookInfo: {
+      present: Boolean(STRIPE_WEBHOOK_SECRET),
+      length: STRIPE_WEBHOOK_SECRET.length,
+      startsWithWhsec: STRIPE_WEBHOOK_SECRET.startsWith("whsec_"),
+    },
     hasSupabaseAdmin: Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY),
     siteUrl: SITE_URL,
   });
@@ -190,4 +219,5 @@ app.use((err: any, _req: any, res: any, _next: any) => {
 app.listen(PORT, () => {
   console.log(`✅ app-api listening on http://localhost:${PORT}`);
   console.log(`📁 TEMPLATE_DIR: ${TEMPLATE_DIR}`);
+  console.log(`💳 Stripe key info:`, describeStripeKey(STRIPE_SECRET_KEY));
 });
