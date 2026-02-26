@@ -61,7 +61,8 @@ export function injectTheoremFallbacks(latex: string): string {
   // Check which environments are already DEFINED via \newtheorem{envname}
   const alreadyDefined = new Set<string>();
   for (const env of needs) {
-    const defPattern = new RegExp(`\\\\newtheorem\\s*\\{${env.name}\\}`);
+    // Accept both \newtheorem{env} and \newtheorem*{env}
+    const defPattern = new RegExp(`\\\\newtheorem\\*?\\s*\\{${env.name}\\}`);
     if (defPattern.test(latex)) {
       alreadyDefined.add(env.name);
     }
@@ -96,6 +97,23 @@ export function injectTheoremFallbacks(latex: string): string {
   return `${latex.slice(0, insertAt)}${injectionLines.join("\n")}\n\n${latex.slice(insertAt)}`;
 }
 
+export function stripDuplicateNewtheoremDefinitions(latex: string): string {
+  const seen = new Set<string>();
+
+  // Line-oriented on purpose: the common case is one-line \newtheorem declarations.
+  return latex.replace(
+    /^([ \t]*)\\newtheorem\*?\s*\{([A-Za-z@][A-Za-z0-9@:_-]*)\}([^\n]*)$/gm,
+    (full, indent: string, envName: string) => {
+      if (!envName) return full;
+      if (!seen.has(envName)) {
+        seen.add(envName);
+        return full;
+      }
+      return `${indent}% BN_REMOVED_DUPLICATE_NEWTHEOREM{${envName}} ${full.trimStart()}`;
+    }
+  );
+}
+
 export function injectCommonMathFallbacks(latex: string): string {
   // Find \begin{document}
   const beginDocMatch = latex.match(/\\begin\s*\{document\}/);
@@ -124,7 +142,7 @@ export function injectCommonMathFallbacks(latex: string): string {
 }
 
 export function applyLatexFallbacks(latex: string): string {
-  return injectCommonMathFallbacks(injectTheoremFallbacks(latex));
+  return injectCommonMathFallbacks(injectTheoremFallbacks(stripDuplicateNewtheoremDefinitions(latex)));
 }
 
 /* -------------------------

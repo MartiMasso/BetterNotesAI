@@ -13,6 +13,7 @@ import { uploadProjectFile, getProjectFileUrl } from "@/lib/storage";
 import FileTree from "@/app/components/FileTree";
 import InlineEditMenu from "@/app/components/InlineEditMenu";
 import PaywallModal from "@/app/components/PaywallModal";
+import ChatThinkingBubble from "@/app/components/ChatThinkingBubble";
 import SlashCommandPicker, { type SlashCommandPickerRef } from "@/app/components/SlashCommandPicker";
 import { templates } from "@/lib/templates";
 import { useToast } from "@/app/components/Toast";
@@ -261,10 +262,30 @@ export default function ProjectWorkspace() {
     }
 
     // ═══ Helpers ═══
+    const thinkingProgressSteps = [
+        "Generating document...",
+        "Compiling PDF preview...",
+    ];
+
+    function isTransientAssistantMessageText(text: string): boolean {
+        const normalized = (text || "").trim();
+        return (
+            normalized.startsWith("Working…") ||
+            normalized.startsWith("Working...") ||
+            normalized.startsWith("Generated. Compiling PDF...")
+        );
+    }
+
+    function getThinkingStepIndex(text: string): number {
+        const normalized = (text || "").trim();
+        if (normalized.startsWith("Generated. Compiling PDF...")) return 1;
+        return 0;
+    }
+
     function replaceLastWorking(m: Msg[], newText: string): Msg[] {
         const copy = [...m];
         for (let i = copy.length - 1; i >= 0; i--) {
-            if (copy[i].role === "assistant" && (copy[i].content.includes("Working…") || copy[i].content.includes("Compiling"))) {
+            if (copy[i].role === "assistant" && isTransientAssistantMessageText(copy[i].content)) {
                 copy[i] = { role: "assistant", content: newText };
                 break;
             }
@@ -294,9 +315,15 @@ export default function ProjectWorkspace() {
     const canSendMessage = useCallback(async (): Promise<boolean> => {
         if (!user) { router.push("/login"); return false; }
         try {
-            const status = await getUsageStatus();
-            setUsageStatus(status);
-            if (status && !status.can_send) { setShowPaywallModal(true); return false; }
+            const status = await Promise.race<UsageStatus | null>([
+                getUsageStatus(),
+                new Promise<UsageStatus | null>((resolve) => setTimeout(() => resolve(null), 5000)),
+            ]);
+            if (status) setUsageStatus(status);
+            if (status && typeof status.can_send === "boolean" && !status.can_send) {
+                setShowPaywallModal(true);
+                return false;
+            }
         } catch { /* fail open */ }
         return true;
     }, [user, router]);
@@ -347,6 +374,8 @@ export default function ProjectWorkspace() {
 
         try {
             setIsCompiling(true);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 180000);
 
             // Build files array for the backend
             const filesPayload = texFiles.map((f) => ({
@@ -383,7 +412,9 @@ export default function ProjectWorkspace() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body),
+                signal: controller.signal,
             });
+            clearTimeout(timeoutId);
 
             const ct = (r.headers.get("content-type") || "").toLowerCase();
             if (r.ok && ct.includes("application/pdf")) {
@@ -415,6 +446,10 @@ export default function ProjectWorkspace() {
             setCompileLog(log || (data?.log ? String(data.log) : ""));
             return { ok: false as const };
         } catch (e: unknown) {
+            if ((e as Error)?.name === "AbortError") {
+                setCompileError("Compile request timed out (180s).");
+                return { ok: false as const };
+            }
             setCompileError((e as Error)?.message || "Compile error");
             return { ok: false as const };
         } finally {
@@ -459,47 +494,55 @@ export default function ProjectWorkspace() {
         const allowed = await canSendMessage();
         if (!allowed) return;
 
-        setChatInput("");
-        // Clear one-shot template override after use
-        const usedTemplate = templateOverride;
-        setTemplateOverride(null);
-        setMessages((m) => [...m, { role: "user", content: text }, { role: "assistant", content: "Working… generating document..." }]);
+        try {
+            setChatInput("");
+            // Clear one-shot template override after use
+            const usedTemplate = templateOverride;
+            setTemplateOverride(null);
+            setMessages((m) => [...m, { role: "user", content: text }, { role: "assistant", content: "Working… generating document..." }]);
 
-        const base = mainTex?.content || "";
-        const gen = await generateLatex(text, base.trim() || undefined);
+            const base = mainTex?.content || "";
+            const gen = await generateLatex(text, base.trim() || undefined);
 
-        if (!gen.ok) {
-            setMessages((m) => replaceLastWorking(m, `Error: ${gen.error}`));
-            return;
+            if (!gen.ok) {
+                setMessages((m) => replaceLastWorking(m, `Error: ${gen.error}`));
+                return;
+            }
+
+            if ("message" in gen && gen.message) {
+                setMessages((m) => replaceLastWorking(m, gen.message!));
+                return;
+            }
+
+            const newLatex = ("latex" in gen ? gen.latex : "") || "";
+            if (base.trim() && newLatex.trim() === base.trim()) {
+                setMessages((m) => replaceLastWorking(m, "No changes detected in the generated LaTeX. Try a more specific edit request."));
+                return;
+            }
+            setOutputFilesFromGeneration(newLatex);
+            setActiveTab("preview");
+            setMessages((m) => replaceLastWorking(m, "Generated. Compiling PDF..."));
+
+            // Save and compile in parallel
+            const compilePromise = compileProject();
+            const savePromise = (async () => {
+                try {
+                    await incrementMessageCount();
+                    if (projectId) await saveOutputFile(projectId, "main.tex", newLatex);
+                } catch { /* skip */ }
+            })();
+
+            const comp = await compilePromise;
+            if (comp.ok) {
+                setOutputFiles((prev) => prev.map((f) => ({ ...f, dirty: false })));
+                setMessages((m) => replaceLastWorking(m, "Done. Preview updated."));
+            } else {
+                setMessages((m) => replaceLastWorking(m, 'Generated LaTeX, but compilation failed. Use "Fix with AI".'));
+            }
+            await savePromise;
+        } catch (e: unknown) {
+            setMessages((m) => replaceLastWorking(m, `Error: ${(e as Error)?.message ?? "Send failed."}`));
         }
-
-        if ("message" in gen && gen.message) {
-            setMessages((m) => replaceLastWorking(m, gen.message!));
-            return;
-        }
-
-        const newLatex = ("latex" in gen ? gen.latex : "") || "";
-        setOutputFilesFromGeneration(newLatex);
-        setActiveTab("preview");
-        setMessages((m) => replaceLastWorking(m, "Generated. Compiling PDF..."));
-
-        // Save and compile in parallel
-        const compilePromise = compileProject();
-        const savePromise = (async () => {
-            try {
-                await incrementMessageCount();
-                if (projectId) await saveOutputFile(projectId, "main.tex", newLatex);
-            } catch { /* skip */ }
-        })();
-
-        const comp = await compilePromise;
-        if (comp.ok) {
-            setOutputFiles((prev) => prev.map((f) => ({ ...f, dirty: false })));
-            setMessages((m) => replaceLastWorking(m, "Done. Preview updated."));
-        } else {
-            setMessages((m) => replaceLastWorking(m, 'Generated LaTeX, but compilation failed. Use "Fix with AI".'));
-        }
-        await savePromise;
     }
 
     // ═══ Save & Compile ═══
@@ -640,12 +683,36 @@ export default function ProjectWorkspace() {
 
                 {/* Chat messages */}
                 <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 min-h-0">
-                    {messages.map((m, idx) => (
-                        <div key={idx} className={`max-w-[92%] rounded-2xl px-3 py-2 text-sm leading-relaxed border ${m.role === "user"
-                            ? "ml-auto bg-white/10 border-white/15"
-                            : "mr-auto bg-black/20 border-white/8"
-                            }`}>{m.content}</div>
-                    ))}
+                    {messages.map((m, idx) => {
+                        const showThinkingBubble =
+                            m.role === "assistant" &&
+                            idx === messages.length - 1 &&
+                            isTransientAssistantMessageText(m.content);
+
+                        if (showThinkingBubble) {
+                            return (
+                                <div key={idx} className="mr-auto max-w-[92%]">
+                                    <ChatThinkingBubble
+                                        text={m.content}
+                                        steps={thinkingProgressSteps}
+                                        activeStepIndex={getThinkingStepIndex(m.content)}
+                                    />
+                                </div>
+                            );
+                        }
+
+                        return (
+                            <div
+                                key={idx}
+                                className={`max-w-[92%] rounded-2xl px-3 py-2 text-sm leading-relaxed border ${m.role === "user"
+                                    ? "ml-auto bg-white/10 border-white/15"
+                                    : "mr-auto bg-black/20 border-white/8"
+                                    }`}
+                            >
+                                {m.content}
+                            </div>
+                        );
+                    })}
                     <div ref={bottomRef} />
                 </div>
 

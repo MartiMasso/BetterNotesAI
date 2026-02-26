@@ -45,7 +45,8 @@ export default function SignupPage() {
       return;
     }
 
-    router.push("/workspace");
+    router.replace("/workspace");
+    router.refresh();
   }
 
   async function handleOAuth(provider: "google" | "github") {

@@ -26,7 +26,7 @@ export async function middleware(req: NextRequest) {
                     return req.cookies.getAll();
                 },
                 setAll(cookiesToSet) {
-                    cookiesToSet.forEach(({ name, value, options }) => {
+                    cookiesToSet.forEach(({ name, value }) => {
                         req.cookies.set(name, value);
                     });
                     res = NextResponse.next({
@@ -42,11 +42,14 @@ export async function middleware(req: NextRequest) {
         }
     );
 
+    // Use getUser() in middleware so Supabase can refresh expired access tokens
+    // and write updated cookies on navigation.
     const {
-        data: { session },
-    } = await supabase.auth.getSession();
+        data: { user },
+    } = await supabase.auth.getUser();
 
     const path = req.nextUrl.pathname;
+    const session = user ? { user } : null;
 
     // If user is not authenticated and trying to access protected route
     if (!session && protectedRoutes.some((route) => path.startsWith(route))) {
@@ -64,5 +67,11 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-    matcher: ["/login", "/signup"],
+    matcher: [
+        /*
+         * Run on most app routes so Supabase can refresh session cookies.
+         * Exclude static assets and image optimizations.
+         */
+        "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    ],
 };

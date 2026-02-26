@@ -37,6 +37,60 @@ export interface IncrementResult {
     is_paid: boolean;
 }
 
+function toNumber(value: unknown, fallback: number): number {
+    const n = typeof value === "number" ? value : Number(value);
+    return Number.isFinite(n) ? n : fallback;
+}
+
+function toBoolean(value: unknown): boolean | null {
+    if (typeof value === "boolean") return value;
+    if (value === "true") return true;
+    if (value === "false") return false;
+    return null;
+}
+
+function normalizeUsageStatus(raw: Record<string, unknown> | null | undefined): UsageStatus | null {
+    if (!raw || typeof raw !== "object") return null;
+
+    const isPaid = toBoolean(raw.is_paid ?? raw.isPro ?? raw.paid) ?? false;
+    const messageCount = toNumber(raw.message_count ?? raw.current_count ?? raw.count, 0);
+    const freeLimit = toNumber(
+        raw.free_limit ?? raw.limit ?? raw.daily_limit ?? raw.free_messages_limit ?? 50,
+        50
+    );
+    const remaining = toNumber(raw.remaining, Math.max(0, freeLimit - messageCount));
+    const canSend =
+        toBoolean(raw.can_send ?? raw.canSend) ??
+        (toBoolean(raw.limit_reached) !== null ? !Boolean(raw.limit_reached) : (isPaid || remaining > 0));
+
+    return {
+        message_count: messageCount,
+        free_limit: freeLimit,
+        remaining,
+        is_paid: isPaid,
+        can_send: canSend,
+        resets_at: String(raw.resets_at ?? raw.reset_at ?? raw.resetsAt ?? ""),
+    };
+}
+
+function normalizeIncrementResult(raw: Record<string, unknown> | null | undefined): IncrementResult | null {
+    if (!raw || typeof raw !== "object") return null;
+
+    const isPaid = toBoolean(raw.is_paid ?? raw.isPro ?? raw.paid) ?? false;
+    const newCount = toNumber(raw.new_count ?? raw.message_count ?? raw.count, 0);
+    const remaining = toNumber(raw.remaining, 0);
+    const limitReached =
+        toBoolean(raw.limit_reached) ??
+        (toBoolean(raw.can_send) !== null ? !Boolean(raw.can_send) : (!isPaid && remaining <= 0));
+
+    return {
+        new_count: newCount,
+        remaining,
+        limit_reached: limitReached,
+        is_paid: isPaid,
+    };
+}
+
 /**
  * Get the current user's usage status
  */
@@ -54,7 +108,7 @@ export async function getUsageStatus(): Promise<UsageStatus | null> {
             return null;
         }
 
-        return data as UsageStatus;
+        return normalizeUsageStatus(data);
     } catch (e) {
         console.warn("getUsageStatus error:", e);
         return null;
@@ -78,7 +132,7 @@ export async function incrementMessageCount(): Promise<IncrementResult | null> {
             return null;
         }
 
-        return data as IncrementResult;
+        return normalizeIncrementResult(data);
     } catch (e) {
         console.warn("incrementMessageCount error:", e);
         return null;

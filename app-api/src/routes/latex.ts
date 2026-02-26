@@ -97,7 +97,13 @@ export function createLatexRouter(deps: LatexDeps) {
     let textPrompt = "";
     if (typeof baseLatex === "string" && baseLatex.trim()) {
       messages.push({ role: "assistant", content: baseLatex });
-      textPrompt = `Revise the previous LaTeX above according to: ${prompt}. Return the full updated document.`;
+      textPrompt = [
+        `Revise the previous LaTeX above according to: ${prompt}.`,
+        "Return the FULL updated document.",
+        "Preserve the current structure/style unless the user explicitly asks to change it.",
+        "Apply the requested edit explicitly (add/remove/modify content in the LaTeX source).",
+        "Do NOT return the same document unchanged unless the request is already fully satisfied.",
+      ].join(" ");
     } else if (wantOnlyBody) {
       textPrompt = [
         `We will insert your output into a LaTeX template (templateId="${templateId}").`,

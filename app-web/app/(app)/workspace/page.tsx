@@ -6,6 +6,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import TemplateCardSelect from "@/app/components/TemplateCardSelect";
 import PaywallModal from "@/app/components/PaywallModal";
 import PdfPreviewModal from "@/app/components/PdfPreviewModal";
+import ChatThinkingBubble from "@/app/components/ChatThinkingBubble";
 import SlashCommandPicker, { type SlashCommandPickerRef } from "@/app/components/SlashCommandPicker";
 import { templates } from "../../../lib/templates";
 import { saveWorkspaceDraft, loadWorkspaceDraft, clearWorkspaceDraft, WorkspaceDraft } from "../../../lib/workspaceDraft";
@@ -431,10 +432,13 @@ function WorkspaceContent() {
 
     if (user) {
       try {
-        const status = await getUsageStatus();
-        setUsageStatus(status);
+        const status = await Promise.race<UsageStatus | null>([
+          getUsageStatus(),
+          new Promise<UsageStatus | null>((resolve) => setTimeout(() => resolve(null), 5000)),
+        ]);
+        if (status) setUsageStatus(status);
         if (!status) return true; // Fail open
-        if (!status.can_send) {
+        if (typeof status.can_send === "boolean" && !status.can_send) {
           setShowPaywallModal(true);
           return false;
         }
@@ -445,7 +449,7 @@ function WorkspaceContent() {
       return true;
     }
     return true;
-  }, [user, anonymousMessageSent]);
+  }, [user, anonymousMessageSent, router]);
 
   const onMessageSent = useCallback(async (latexContent?: string, newMessages?: Msg[]) => {
     if (!user) {
@@ -673,11 +677,32 @@ function WorkspaceContent() {
     "Formatting equations and symbols…",
     "Finalizing output…",
   ];
+  // Keep the expandable progress list tied to real stages only.
+  const thinkingProgressSteps = ["Generating AI response…", "Compiling PDF preview…"];
+
+  function isTransientAssistantMessageText(text: string) {
+    const normalized = (text || "").trim();
+    return (
+      loadingSteps.includes(normalized) ||
+      normalized.startsWith("Generated. Compiling PDF...")
+    );
+  }
+
+  function getThinkingStepIndex(text: string) {
+    const normalized = (text || "").trim();
+    if (loadingSteps.includes(normalized)) return 0;
+    if (normalized.startsWith("Generated. Compiling PDF...")) return 1;
+    return 0;
+  }
 
   function startLoadingAnimation() {
     let step = 0;
     const interval = setInterval(() => {
-      step = (step + 1) % loadingSteps.length;
+      if (step >= loadingSteps.length - 1) {
+        clearInterval(interval);
+        return;
+      }
+      step += 1;
       setMessages((m) => replaceLastWorking(m, loadingSteps[step]));
     }, 3000);
     return interval;
@@ -696,28 +721,34 @@ function WorkspaceContent() {
     setStartInput("");
     setProjectInput("");
 
-    setMessages((m) => [
-      ...m,
-      { role: "user", content: text || (hasFiles ? `[Sent ${files.length} file(s)]` : "") },
-      { role: "assistant", content: loadingSteps[0] },
-    ]);
+    let loadingInterval: ReturnType<typeof setInterval> | null = null;
+    try {
+      setMessages((m) => [
+        ...m,
+        { role: "user", content: text || (hasFiles ? `[Sent ${files.length} file(s)]` : "") },
+        { role: "assistant", content: loadingSteps[0] },
+      ]);
 
-    const loadingInterval = startLoadingAnimation();
+      loadingInterval = startLoadingAnimation();
 
-    // Process files
-    const filePayload = await processFilesForPayload(files);
-    setFiles([]);
-    setFileError("");
+      // Process files
+      const filePayload = await processFilesForPayload(files);
+      setFiles([]);
+      setFileError("");
 
-    const gen = await generateLatexFromPrompt(text, selectedTemplate?.id, undefined, filePayload);
-    clearInterval(loadingInterval);
+      const gen = await generateLatexFromPrompt(text, selectedTemplate?.id, undefined, filePayload);
 
-    if (!gen.ok) {
-      setMessages((m) => replaceLastWorking(m, `Error: ${gen.error}`));
-      return;
+      if (!gen.ok) {
+        setMessages((m) => replaceLastWorking(m, `Error: ${gen.error}`));
+        return;
+      }
+
+      await handleGenerationResult(gen);
+    } catch (e: any) {
+      setMessages((m) => replaceLastWorking(m, `Error: ${e?.message ?? "Send failed."}`));
+    } finally {
+      if (loadingInterval) clearInterval(loadingInterval);
     }
-
-    handleGenerationResult(gen);
   }
 
   async function projectSend() {
@@ -731,34 +762,42 @@ function WorkspaceContent() {
 
     setProjectInput("");
 
-    setMessages((m) => [
-      ...m,
-      { role: "user", content: text || (hasFiles ? `[Sent ${files.length} file(s)]` : "") },
-      { role: "assistant", content: loadingSteps[0] },
-    ]);
+    let loadingInterval: ReturnType<typeof setInterval> | null = null;
+    try {
+      setMessages((m) => [
+        ...m,
+        { role: "user", content: text || (hasFiles ? `[Sent ${files.length} file(s)]` : "") },
+        { role: "assistant", content: loadingSteps[0] },
+      ]);
 
-    const loadingInterval = startLoadingAnimation();
+      loadingInterval = startLoadingAnimation();
 
-    // Process files
-    const filePayload = await processFilesForPayload(files);
-    setFiles([]);
-    setFileError("");
+      // Process files
+      const filePayload = await processFilesForPayload(files);
+      setFiles([]);
+      setFileError("");
 
-    const base = (draftLatex || savedLatex || "").trim();
+      const base = (draftLatex || savedLatex || "").trim();
+      const gen = await generateLatexFromPrompt(text, selectedTemplate?.id, base, filePayload);
 
-    const gen = await generateLatexFromPrompt(text, selectedTemplate?.id, base, filePayload);
-    clearInterval(loadingInterval);
+      if (!gen.ok) {
+        setMessages((m) => replaceLastWorking(m, `Error: ${gen.error}`));
+        return;
+      }
 
-    if (!gen.ok) {
-      setMessages((m) => replaceLastWorking(m, `Error: ${gen.error}`));
-      return;
+      await handleGenerationResult(gen, base);
+    } catch (e: any) {
+      setMessages((m) => replaceLastWorking(m, `Error: ${e?.message ?? "Send failed."}`));
+    } finally {
+      if (loadingInterval) clearInterval(loadingInterval);
     }
-
-    handleGenerationResult(gen);
   }
 
   // Refactored result handler to avoid duplication
-  async function handleGenerationResult(gen: { ok: true; latex?: string; message?: string } | { ok: false; error: string }) {
+  async function handleGenerationResult(
+    gen: { ok: true; latex?: string; message?: string } | { ok: false; error: string },
+    previousLatex?: string,
+  ) {
     if (!gen.ok) return; // Should be handled by caller
 
     // Check if it's a plain message (General Chat)
@@ -769,6 +808,13 @@ function WorkspaceContent() {
 
     // It's LaTeX
     const newLatex = gen.latex || "";
+    const hadPreviousLatex = typeof previousLatex === "string" && previousLatex.trim().length > 0;
+
+    if (hadPreviousLatex && newLatex.trim() === previousLatex!.trim()) {
+      setMessages((m) => replaceLastWorking(m, "No changes detected in the generated LaTeX. Try a more specific edit request."));
+      await onMessageSent(previousLatex);
+      return;
+    }
 
     // UPDATE UI IMMEDIATELY
     setDraftLatex(newLatex);
@@ -799,11 +845,15 @@ function WorkspaceContent() {
     setCompileLog("");
     try {
       setIsCompiling(true);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 180000);
       const r = await fetch(`${API_BASE_URL}/compile`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ latex }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       const ct = (r.headers.get("content-type") || "").toLowerCase();
 
       if (r.ok) {
@@ -838,6 +888,10 @@ function WorkspaceContent() {
       setCompileLog(log || (data?.log ? String(data.log) : ""));
       return { ok: false, error: message, log: log || (data?.log ? String(data.log) : "") };
     } catch (e: any) {
+      if (e?.name === "AbortError") {
+        setCompileError("Compile request timed out (180s).");
+        return { ok: false, error: "Compile request timed out (180s)." };
+      }
       setCompileError(e?.message || "Compile error");
       return { ok: false, error: e?.message || "Compile error" };
     } finally {
@@ -848,7 +902,7 @@ function WorkspaceContent() {
   function replaceLastWorking(m: Msg[], newText: string) {
     const copy = [...m];
     for (let i = copy.length - 1; i >= 0; i--) {
-      if (copy[i].role === "assistant" && (copy[i].content.includes("Working…") || copy[i].content.includes("Generating") || copy[i].content.includes("Compiling"))) {
+      if (copy[i].role === "assistant" && isTransientAssistantMessageText(copy[i].content)) {
         copy[i] = { role: "assistant", content: newText };
         break;
       }
@@ -870,9 +924,38 @@ function WorkspaceContent() {
               <button onClick={() => { resetWorkspace(); setMode("start"); }} className="text-xs rounded-xl border border-white/15 bg-white/10 px-2 py-1 hover:bg-white/15">← Back</button>
             </div>
             <div className="flex-1 overflow-auto px-4 py-4 space-y-3">
-              {messages.map((m, idx) => (
-                <div key={idx} className={["max-w-[92%] rounded-2xl px-3 py-2 text-sm leading-relaxed border", m.role === "user" ? "ml-auto bg-white/10 border-white/15" : "mr-auto bg-black/20 border-white/10"].join(" ")}>{m.content}</div>
-              ))}
+              {messages.map((m, idx) => {
+                const showThinkingBubble =
+                  m.role === "assistant" &&
+                  idx === messages.length - 1 &&
+                  isTransientAssistantMessageText(m.content);
+
+                if (showThinkingBubble) {
+                  return (
+                    <div key={idx} className="mr-auto max-w-[92%]">
+                      <ChatThinkingBubble
+                        text={m.content}
+                        steps={thinkingProgressSteps}
+                        activeStepIndex={getThinkingStepIndex(m.content)}
+                      />
+                    </div>
+                  );
+                }
+
+                return (
+                  <div
+                    key={idx}
+                    className={[
+                      "max-w-[92%] rounded-2xl px-3 py-2 text-sm leading-relaxed border",
+                      m.role === "user"
+                        ? "ml-auto bg-white/10 border-white/15"
+                        : "mr-auto bg-black/20 border-white/10",
+                    ].join(" ")}
+                  >
+                    {m.content}
+                  </div>
+                );
+              })}
               <div ref={bottomRef} />
             </div>
             <div className="p-4 border-t border-white/10">
