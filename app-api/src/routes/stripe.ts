@@ -95,7 +95,16 @@ export function createStripeRouter(deps: StripeDeps) {
 
       return res.json({ ok: true, url: session.url });
     } catch (e: any) {
-      console.error("[stripe/create-checkout-session]", e);
+      console.error("[stripe/create-checkout-session]", {
+        message: e?.message ?? "Unknown error",
+        type: e?.type,
+        code: e?.code,
+        statusCode: e?.statusCode,
+        requestId: e?.requestId,
+        rawType: e?.raw?.type,
+        rawCode: e?.raw?.code,
+        rawMessage: e?.raw?.message,
+      });
       return res.status(500).json({ ok: false, error: e.message ?? "Server error" });
     }
   });
