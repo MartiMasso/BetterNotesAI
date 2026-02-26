@@ -49,19 +49,20 @@ function toBoolean(value: unknown): boolean | null {
     return null;
 }
 
-function normalizeUsageStatus(raw: Record<string, unknown> | null | undefined): UsageStatus | null {
+function normalizeUsageStatus(raw: unknown): UsageStatus | null {
     if (!raw || typeof raw !== "object") return null;
+    const obj = raw as Record<string, unknown>;
 
-    const isPaid = toBoolean(raw.is_paid ?? raw.isPro ?? raw.paid) ?? false;
-    const messageCount = toNumber(raw.message_count ?? raw.current_count ?? raw.count, 0);
+    const isPaid = toBoolean(obj.is_paid ?? obj.isPro ?? obj.paid) ?? false;
+    const messageCount = toNumber(obj.message_count ?? obj.current_count ?? obj.count, 0);
     const freeLimit = toNumber(
-        raw.free_limit ?? raw.limit ?? raw.daily_limit ?? raw.free_messages_limit ?? 50,
+        obj.free_limit ?? obj.limit ?? obj.daily_limit ?? obj.free_messages_limit ?? 50,
         50
     );
-    const remaining = toNumber(raw.remaining, Math.max(0, freeLimit - messageCount));
+    const remaining = toNumber(obj.remaining, Math.max(0, freeLimit - messageCount));
     const canSend =
-        toBoolean(raw.can_send ?? raw.canSend) ??
-        (toBoolean(raw.limit_reached) !== null ? !Boolean(raw.limit_reached) : (isPaid || remaining > 0));
+        toBoolean(obj.can_send ?? obj.canSend) ??
+        (toBoolean(obj.limit_reached) !== null ? !Boolean(obj.limit_reached) : (isPaid || remaining > 0));
 
     return {
         message_count: messageCount,
@@ -69,19 +70,20 @@ function normalizeUsageStatus(raw: Record<string, unknown> | null | undefined): 
         remaining,
         is_paid: isPaid,
         can_send: canSend,
-        resets_at: String(raw.resets_at ?? raw.reset_at ?? raw.resetsAt ?? ""),
+        resets_at: String(obj.resets_at ?? obj.reset_at ?? obj.resetsAt ?? ""),
     };
 }
 
-function normalizeIncrementResult(raw: Record<string, unknown> | null | undefined): IncrementResult | null {
+function normalizeIncrementResult(raw: unknown): IncrementResult | null {
     if (!raw || typeof raw !== "object") return null;
+    const obj = raw as Record<string, unknown>;
 
-    const isPaid = toBoolean(raw.is_paid ?? raw.isPro ?? raw.paid) ?? false;
-    const newCount = toNumber(raw.new_count ?? raw.message_count ?? raw.count, 0);
-    const remaining = toNumber(raw.remaining, 0);
+    const isPaid = toBoolean(obj.is_paid ?? obj.isPro ?? obj.paid) ?? false;
+    const newCount = toNumber(obj.new_count ?? obj.message_count ?? obj.count, 0);
+    const remaining = toNumber(obj.remaining, 0);
     const limitReached =
-        toBoolean(raw.limit_reached) ??
-        (toBoolean(raw.can_send) !== null ? !Boolean(raw.can_send) : (!isPaid && remaining <= 0));
+        toBoolean(obj.limit_reached) ??
+        (toBoolean(obj.can_send) !== null ? !Boolean(obj.can_send) : (!isPaid && remaining <= 0));
 
     return {
         new_count: newCount,
