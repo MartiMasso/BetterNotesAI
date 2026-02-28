@@ -1,7 +1,9 @@
 // app-api/src/server.ts
 import express from "express";
 import cors from "cors";
+import fs from "fs";
 import path from "path";
+import dotenv from "dotenv";
 import OpenAI from "openai";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
@@ -11,6 +13,47 @@ import { createLatexRouter } from "./routes/latex";
 import { createStripeRouter } from "./routes/stripe";
 
 const app = express();
+
+const INITIAL_RUNTIME_ENV_KEYS = new Set(Object.keys(process.env));
+const APP_API_ROOT = path.resolve(__dirname, "..");
+const APP_API_ENV_FILE = path.resolve(APP_API_ROOT, ".env");
+const APP_WEB_ENV_LOCAL_FILE = path.resolve(APP_API_ROOT, "../app-web/.env.local");
+const FRONTEND_MANAGED_SERVER_ENV_KEYS = [
+  "STRIPE_SECRET_KEY",
+  "STRIPE_WEBHOOK_SECRET",
+  "SITE_URL",
+] as const;
+
+function loadAppApiEnvFile() {
+  if (!fs.existsSync(APP_API_ENV_FILE)) return;
+  const result = dotenv.config({ path: APP_API_ENV_FILE, override: false });
+  if (result.error) {
+    console.warn(`[WARN] Could not load env file: ${APP_API_ENV_FILE}`, result.error.message);
+  }
+}
+
+function loadFrontendManagedServerEnv() {
+  if (!fs.existsSync(APP_WEB_ENV_LOCAL_FILE)) return;
+
+  try {
+    const parsed = dotenv.parse(fs.readFileSync(APP_WEB_ENV_LOCAL_FILE, "utf8"));
+
+    for (const key of FRONTEND_MANAGED_SERVER_ENV_KEYS) {
+      const value = parsed[key];
+      if (typeof value !== "string" || !value.trim()) continue;
+
+      // Keep explicit runtime env vars (docker, CI, Railway, etc.) as top priority.
+      if (INITIAL_RUNTIME_ENV_KEYS.has(key)) continue;
+      process.env[key] = value;
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`[WARN] Could not load env file: ${APP_WEB_ENV_LOCAL_FILE}`, message);
+  }
+}
+
+loadAppApiEnvFile();
+loadFrontendManagedServerEnv();
 
 function readEnv(name: string): string {
   const raw = process.env[name];
@@ -80,10 +123,10 @@ const SITE_URL = readEnv("SITE_URL") || "http://localhost:3000";
 const STRIPE_PRICE_PRO_MONTHLY = readEnv("STRIPE_PRICE_PRO_MONTHLY");
 
 if (!STRIPE_SECRET_KEY) {
-  console.warn("[WARN] STRIPE_SECRET_KEY is not set. Stripe routes will fail.");
+  console.warn("[WARN] STRIPE_SECRET_KEY is not set (checked runtime env + app-web/.env.local). Stripe routes will fail.");
 }
 if (!STRIPE_WEBHOOK_SECRET) {
-  console.warn("[WARN] STRIPE_WEBHOOK_SECRET is not set. /stripe/webhook signature verification will fail.");
+  console.warn("[WARN] STRIPE_WEBHOOK_SECRET is not set (checked runtime env + app-web/.env.local). /stripe/webhook signature verification will fail.");
 }
 
 const SUPABASE_URL = readEnv("SUPABASE_URL");

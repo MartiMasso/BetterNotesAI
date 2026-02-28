@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   description:
     "Upload lecture slides or notes and generate formula sheets, summaries, or cheatsheets as beautiful LaTeX documents in seconds.",
   metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SITE_URL || "https://betternotes.ai"
+    process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://betternotes.ai"
   ),
   openGraph: {
     title: "BetterNotes — Turn messy notes into clean LaTeX + PDF",
