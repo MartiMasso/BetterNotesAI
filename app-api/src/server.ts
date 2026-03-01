@@ -1,6 +1,7 @@
 // app-api/src/server.ts
 import express from "express";
 import cors from "cors";
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
@@ -74,7 +75,7 @@ function readStripeSecretEnv(name: string): string {
 }
 
 function describeStripeKey(key: string) {
-  if (!key) return { present: false, mode: "missing", length: 0 };
+  if (!key) return { present: false, mode: "missing", length: 0, fingerprint: null };
   const mode = key.startsWith("sk_live_")
     ? "live"
     : key.startsWith("sk_test_")
@@ -82,11 +83,13 @@ function describeStripeKey(key: string) {
       : key.startsWith("rk_")
         ? "restricted"
         : "unknown";
+  const fingerprint = crypto.createHash("sha256").update(key).digest("hex").slice(0, 12);
   return {
     present: true,
     mode,
     length: key.length,
     startsWithSk: key.startsWith("sk_"),
+    fingerprint,
   };
 }
 
