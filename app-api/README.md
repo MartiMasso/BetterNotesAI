@@ -33,3 +33,7 @@ From `app-api/`:
 ```bash
 docker compose up --build
 ```
+
+This compose setup loads env vars from:
+- `app-api/.env`
+- `app-web/.env.local` (for Stripe keys and `SITE_URL`)
