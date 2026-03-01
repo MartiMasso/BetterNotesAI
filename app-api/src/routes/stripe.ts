@@ -13,10 +13,42 @@ type StripeDeps = {
   priceProId?: string;
 };
 
+type SupabaseErrorLike = {
+  message?: string;
+  code?: string;
+  hint?: string;
+  details?: string;
+  status?: number;
+};
+
 function makeHttpError(message: string, statusCode: number) {
   const err: any = new Error(message);
   err.statusCode = statusCode;
   return err as Error;
+}
+
+function isSupabaseInvalidApiKeyError(err: SupabaseErrorLike) {
+  const msg = (err?.message ?? "").toLowerCase();
+  return msg.includes("invalid api key");
+}
+
+function throwSupabaseError(operation: string, err: SupabaseErrorLike): never {
+  const hint = isSupabaseInvalidApiKeyError(err)
+    ? "Check backend env vars SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY."
+    : "";
+  const wrapped: any = makeHttpError(
+    `[SUPABASE_ERROR:${operation}] ${err?.message ?? "Unknown Supabase error."}${hint ? ` ${hint}` : ""}`,
+    500
+  );
+  wrapped.source = "supabase";
+  wrapped.operation = operation;
+  wrapped.supabase = {
+    code: err?.code,
+    hint: err?.hint,
+    details: err?.details,
+    status: err?.status,
+  };
+  throw wrapped;
 }
 
 function assertStripeConfigured(deps: StripeDeps) {
@@ -55,7 +87,7 @@ export function createStripeRouter(deps: StripeDeps) {
         .eq("id", userId)
         .maybeSingle();
 
-      if (pErr) throw pErr;
+      if (pErr) throwSupabaseError("profiles.select.checkout", pErr);
 
       let stripeCustomerId = (profile?.stripe_customer_id as string | null) ?? null;
 
@@ -66,12 +98,13 @@ export function createStripeRouter(deps: StripeDeps) {
         });
         stripeCustomerId = customer.id;
 
-        await deps.supabaseAdmin.from("profiles").upsert({
+        const { error: profUpsertErr } = await deps.supabaseAdmin.from("profiles").upsert({
           id: userId,
           email: email ?? profile?.email ?? null,
           stripe_customer_id: stripeCustomerId,
           updated_at: new Date().toISOString(),
         });
+        if (profUpsertErr) throwSupabaseError("profiles.upsert.checkout_customer", profUpsertErr);
       }
 
       const session = await deps.stripe.checkout.sessions.create({
@@ -97,6 +130,9 @@ export function createStripeRouter(deps: StripeDeps) {
     } catch (e: any) {
       console.error("[stripe/create-checkout-session]", {
         message: e?.message ?? "Unknown error",
+        source: e?.source,
+        operation: e?.operation,
+        supabase: e?.supabase,
         type: e?.type,
         code: e?.code,
         statusCode: e?.statusCode,
@@ -151,7 +187,7 @@ export function createStripeRouter(deps: StripeDeps) {
         .select("stripe_customer_id")
         .eq("id", userId)
         .maybeSingle();
-      if (pErr) throw pErr;
+      if (pErr) throwSupabaseError("profiles.select.sync_checkout", pErr);
 
       const existingCustomerId = (profile?.stripe_customer_id as string | null) ?? null;
       if (existingCustomerId && existingCustomerId !== stripeCustomerId) {
@@ -183,7 +219,7 @@ export function createStripeRouter(deps: StripeDeps) {
         .select("id")
         .eq("stripe_subscription_id", stripeSubscriptionId)
         .maybeSingle();
-      if (exErr) throw exErr;
+      if (exErr) throwSupabaseError("subscriptions.select.sync_checkout", exErr);
 
       if (existing?.id) {
         const { error: updErr } = await deps.supabaseAdmin
@@ -197,7 +233,7 @@ export function createStripeRouter(deps: StripeDeps) {
             current_period_end: periodEndIso,
           })
           .eq("id", existing.id);
-        if (updErr) throw updErr;
+        if (updErr) throwSupabaseError("subscriptions.update.sync_checkout", updErr);
       } else {
         const { error: insErr } = await deps.supabaseAdmin.from("subscriptions").insert({
           user_id: userId,
@@ -207,7 +243,7 @@ export function createStripeRouter(deps: StripeDeps) {
           status,
           current_period_end: periodEndIso,
         });
-        if (insErr) throw insErr;
+        if (insErr) throwSupabaseError("subscriptions.insert.sync_checkout", insErr);
       }
 
       const profileUpdate: Record<string, any> = {
@@ -222,7 +258,7 @@ export function createStripeRouter(deps: StripeDeps) {
       if (shouldSetPro) profileUpdate.plan = "pro";
 
       const { error: profUpErr } = await deps.supabaseAdmin.from("profiles").upsert(profileUpdate);
-      if (profUpErr) throw profUpErr;
+      if (profUpErr) throwSupabaseError("profiles.upsert.sync_checkout", profUpErr);
 
       return res.json({ ok: true, synced: true, plan: shouldSetPro ? "pro" : "free", status });
     } catch (e: any) {
@@ -245,7 +281,7 @@ export function createStripeRouter(deps: StripeDeps) {
         .eq("id", userId)
         .maybeSingle();
 
-      if (pErr) throw pErr;
+      if (pErr) throwSupabaseError("profiles.select.portal", pErr);
 
       const stripeCustomerId = profile?.stripe_customer_id as string | undefined;
       if (!stripeCustomerId) return res.status(400).json({ ok: false, error: "No Stripe customer for user." });
@@ -301,7 +337,7 @@ export function createStripeRouter(deps: StripeDeps) {
               .eq("stripe_customer_id", stripeCustomerId)
               .maybeSingle();
 
-            if (profErr) throw profErr;
+            if (profErr) throwSupabaseError("profiles.select.webhook_customer_lookup", profErr);
             userId = prof?.id ?? null;
           }
 
@@ -330,7 +366,7 @@ export function createStripeRouter(deps: StripeDeps) {
             .eq("stripe_subscription_id", stripeSubscriptionId)
             .maybeSingle();
 
-          if (exErr) throw exErr;
+          if (exErr) throwSupabaseError("subscriptions.select.webhook", exErr);
 
           if (existing?.id) {
             const { error: updErr } = await deps.supabaseAdmin
@@ -344,7 +380,7 @@ export function createStripeRouter(deps: StripeDeps) {
                 current_period_end: periodEndIso,
               })
               .eq("id", existing.id);
-            if (updErr) throw updErr;
+            if (updErr) throwSupabaseError("subscriptions.update.webhook", updErr);
           } else {
             const { error: insErr } = await deps.supabaseAdmin.from("subscriptions").insert({
               user_id: userId,
@@ -354,7 +390,7 @@ export function createStripeRouter(deps: StripeDeps) {
               status,
               current_period_end: periodEndIso,
             });
-            if (insErr) throw insErr;
+            if (insErr) throwSupabaseError("subscriptions.insert.webhook", insErr);
           }
 
           const profileUpdate: Record<string, any> = {
@@ -369,7 +405,7 @@ export function createStripeRouter(deps: StripeDeps) {
           if (shouldSetPro) profileUpdate.plan = "pro";
 
           const { error: profUpErr } = await deps.supabaseAdmin.from("profiles").upsert(profileUpdate);
-          if (profUpErr) throw profUpErr;
+          if (profUpErr) throwSupabaseError("profiles.upsert.webhook", profUpErr);
 
           break;
         }
