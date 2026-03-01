@@ -14,7 +14,6 @@ import { createStripeRouter } from "./routes/stripe";
 
 const app = express();
 
-const INITIAL_RUNTIME_ENV_KEYS = new Set(Object.keys(process.env));
 const APP_API_ROOT = path.resolve(__dirname, "..");
 const APP_API_ENV_FILE = path.resolve(APP_API_ROOT, ".env");
 const APP_WEB_ENV_LOCAL_FILE = path.resolve(APP_API_ROOT, "../app-web/.env.local");
@@ -41,9 +40,7 @@ function loadFrontendManagedServerEnv() {
     for (const key of FRONTEND_MANAGED_SERVER_ENV_KEYS) {
       const value = parsed[key];
       if (typeof value !== "string" || !value.trim()) continue;
-
-      // Keep explicit runtime env vars (docker, CI, Railway, etc.) as top priority.
-      if (INITIAL_RUNTIME_ENV_KEYS.has(key)) continue;
+      // For Stripe runtime in local/dev, app-web/.env.local is the source of truth.
       process.env[key] = value;
     }
   } catch (err) {
