@@ -93,6 +93,62 @@ function describeStripeKey(key: string) {
   };
 }
 
+function decodeJwtPayload(token: string): Record<string, any> | null {
+  const parts = token.split(".");
+  if (parts.length < 2) return null;
+  try {
+    const json = Buffer.from(parts[1], "base64url").toString("utf8");
+    const payload = JSON.parse(json);
+    return payload && typeof payload === "object" ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
+function getSupabaseProjectRefFromUrl(url: string): string | null {
+  if (!url) return null;
+  try {
+    const hostname = new URL(url).hostname;
+    if (!hostname.endsWith(".supabase.co")) return null;
+    const [ref] = hostname.split(".");
+    return ref || null;
+  } catch {
+    return null;
+  }
+}
+
+function describeSupabaseAdmin(url: string, key: string) {
+  const urlRef = getSupabaseProjectRefFromUrl(url);
+  if (!key) {
+    return {
+      present: false,
+      keyLength: 0,
+      role: null as string | null,
+      keyRef: null as string | null,
+      urlRef,
+      refMatchesUrl: null as boolean | null,
+    };
+  }
+
+  const payload = decodeJwtPayload(key);
+  const role = typeof payload?.role === "string" ? payload.role : null;
+
+  let keyRef: string | null = typeof payload?.ref === "string" ? payload.ref : null;
+  if (!keyRef && typeof payload?.iss === "string") {
+    const m = payload.iss.match(/^https:\/\/([a-z0-9-]+)\.supabase\.co\/auth\/v1\/?$/i);
+    if (m?.[1]) keyRef = m[1];
+  }
+
+  return {
+    present: true,
+    keyLength: key.length,
+    role,
+    keyRef,
+    urlRef,
+    refMatchesUrl: keyRef && urlRef ? keyRef === urlRef : null,
+  };
+}
+
 // -------------------------
 // Env / Config
 // -------------------------
@@ -131,8 +187,18 @@ if (!STRIPE_WEBHOOK_SECRET) {
 
 const SUPABASE_URL = readEnv("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = readEnv("SUPABASE_SERVICE_ROLE_KEY");
+const supabaseAdminInfo = describeSupabaseAdmin(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.warn("[WARN] SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set. Stripe webhook DB sync will fail.");
+} else {
+  if (supabaseAdminInfo.role && supabaseAdminInfo.role !== "service_role") {
+    console.warn("[WARN] SUPABASE_SERVICE_ROLE_KEY is not a service_role key. Stripe sync requires service_role.");
+  }
+  if (supabaseAdminInfo.refMatchesUrl === false) {
+    console.warn(
+      `[WARN] Supabase project mismatch. SUPABASE_URL ref=${supabaseAdminInfo.urlRef} but key ref=${supabaseAdminInfo.keyRef}.`
+    );
+  }
 }
 
 // -------------------------
@@ -206,6 +272,7 @@ app.get("/health", (_req, res) => {
       startsWithWhsec: STRIPE_WEBHOOK_SECRET.startsWith("whsec_"),
     },
     hasSupabaseAdmin: Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY),
+    supabaseAdminInfo,
     siteUrl: SITE_URL,
   });
 });
@@ -263,4 +330,5 @@ app.listen(PORT, () => {
   console.log(`✅ app-api listening on http://localhost:${PORT}`);
   console.log(`📁 TEMPLATE_DIR: ${TEMPLATE_DIR}`);
   console.log(`💳 Stripe key info:`, describeStripeKey(STRIPE_SECRET_KEY));
+  console.log(`🗄️ Supabase admin info:`, supabaseAdminInfo);
 });
