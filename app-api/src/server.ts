@@ -18,11 +18,14 @@ const app = express();
 const APP_API_ROOT = path.resolve(__dirname, "..");
 const APP_API_ENV_FILE = path.resolve(APP_API_ROOT, ".env");
 const APP_WEB_ENV_LOCAL_FILE = path.resolve(APP_API_ROOT, "../app-web/.env.local");
-const FRONTEND_MANAGED_SERVER_ENV_KEYS = [
-  "STRIPE_SECRET_KEY",
-  "STRIPE_WEBHOOK_SECRET",
-  "SITE_URL",
-] as const;
+const FRONTEND_ENV_ALIAS_MAP: Record<string, string[]> = {
+  STRIPE_SECRET_KEY: ["STRIPE_SECRET_KEY"],
+  STRIPE_WEBHOOK_SECRET: ["STRIPE_WEBHOOK_SECRET"],
+  SITE_URL: ["SITE_URL", "NEXT_PUBLIC_SITE_URL"],
+  SUPABASE_URL: ["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"],
+  SUPABASE_ANON_KEY: ["SUPABASE_ANON_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY"],
+  SUPABASE_SERVICE_ROLE_KEY: ["SUPABASE_SERVICE_ROLE_KEY"],
+};
 
 function loadAppApiEnvFile() {
   if (!fs.existsSync(APP_API_ENV_FILE)) return;
@@ -38,11 +41,13 @@ function loadFrontendManagedServerEnv() {
   try {
     const parsed = dotenv.parse(fs.readFileSync(APP_WEB_ENV_LOCAL_FILE, "utf8"));
 
-    for (const key of FRONTEND_MANAGED_SERVER_ENV_KEYS) {
-      const value = parsed[key];
-      if (typeof value !== "string" || !value.trim()) continue;
-      // For Stripe runtime in local/dev, app-web/.env.local is the source of truth.
-      process.env[key] = value;
+    for (const [targetKey, sourceCandidates] of Object.entries(FRONTEND_ENV_ALIAS_MAP)) {
+      const value = sourceCandidates
+        .map((sourceKey) => parsed[sourceKey])
+        .find((raw) => typeof raw === "string" && raw.trim()) as string | undefined;
+      if (!value) continue;
+      // For local/dev, app-web/.env.local can be the single source of truth.
+      process.env[targetKey] = value;
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -186,10 +191,11 @@ if (!STRIPE_WEBHOOK_SECRET) {
 }
 
 const SUPABASE_URL = readEnv("SUPABASE_URL");
+const SUPABASE_ANON_KEY = readEnv("SUPABASE_ANON_KEY");
 const SUPABASE_SERVICE_ROLE_KEY = readEnv("SUPABASE_SERVICE_ROLE_KEY");
 const supabaseAdminInfo = describeSupabaseAdmin(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.warn("[WARN] SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set. Stripe webhook DB sync will fail.");
+  console.warn("[WARN] SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set (checked runtime env + app-web/.env.local). Stripe webhook DB sync will fail.");
 } else {
   if (supabaseAdminInfo.role && supabaseAdminInfo.role !== "service_role") {
     console.warn("[WARN] SUPABASE_SERVICE_ROLE_KEY is not a service_role key. Stripe sync requires service_role.");
@@ -272,6 +278,7 @@ app.get("/health", (_req, res) => {
       startsWithWhsec: STRIPE_WEBHOOK_SECRET.startsWith("whsec_"),
     },
     hasSupabaseAdmin: Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY),
+    hasSupabaseAnon: Boolean(SUPABASE_ANON_KEY),
     supabaseAdminInfo,
     siteUrl: SITE_URL,
   });
