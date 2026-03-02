@@ -91,6 +91,15 @@ type SubscriptionUpsertInput = {
   priceProId: string;
 };
 
+type SupabaseAdminInfo = {
+  hasUrl: boolean;
+  hasServiceRoleKey: boolean;
+  role: string | null;
+  urlRef: string | null;
+  keyRef: string | null;
+  refMatchesUrl: boolean | null;
+};
+
 let parsedLocalEnvCache: Record<string, string> | null = null;
 
 function parseEnvFileContent(raw: string): Record<string, string> {
@@ -186,6 +195,56 @@ function makeHttpError(message: string, statusCode: number) {
   return err;
 }
 
+function decodeJwtPayload(token: string): Record<string, any> | null {
+  const parts = token.split(".");
+  if (parts.length < 2) return null;
+  try {
+    const json = Buffer.from(parts[1], "base64url").toString("utf8");
+    const payload = JSON.parse(json);
+    return payload && typeof payload === "object" ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
+function getSupabaseProjectRefFromUrl(url: string): string | null {
+  if (!url) return null;
+  try {
+    const hostname = new URL(url).hostname;
+    if (!hostname.endsWith(".supabase.co")) return null;
+    const [ref] = hostname.split(".");
+    return ref || null;
+  } catch {
+    return null;
+  }
+}
+
+function describeSupabaseAdminEnv(): SupabaseAdminInfo {
+  const supabaseUrl = readEnv("SUPABASE_URL") || readEnv("NEXT_PUBLIC_SUPABASE_URL");
+  const serviceRoleKey = readEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const hasUrl = Boolean(supabaseUrl);
+  const hasServiceRoleKey = Boolean(serviceRoleKey);
+  const urlRef = getSupabaseProjectRefFromUrl(supabaseUrl);
+
+  const payload = serviceRoleKey ? decodeJwtPayload(serviceRoleKey) : null;
+  const role = typeof payload?.role === "string" ? payload.role : null;
+
+  let keyRef: string | null = typeof payload?.ref === "string" ? payload.ref : null;
+  if (!keyRef && typeof payload?.iss === "string") {
+    const m = payload.iss.match(/^https:\/\/([a-z0-9-]+)\.supabase\.co\/auth\/v1\/?$/i);
+    if (m?.[1]) keyRef = m[1];
+  }
+
+  return {
+    hasUrl,
+    hasServiceRoleKey,
+    role,
+    urlRef,
+    keyRef,
+    refMatchesUrl: keyRef && urlRef ? keyRef === urlRef : null,
+  };
+}
+
 function isSupabaseInvalidApiKeyError(err: SupabaseErrorLike) {
   const msg = (err?.message ?? "").toLowerCase();
   return msg.includes("invalid api key");
@@ -212,12 +271,23 @@ function throwSupabaseError(operation: string, err: SupabaseErrorLike): never {
 
 function assertConfiguredForBilling(deps: BillingDeps) {
   if (!deps.stripeSecretKey) throw makeHttpError("[STRIPE_NOT_CONFIGURED] STRIPE_SECRET_KEY missing.", 500);
+  const adminInfo = describeSupabaseAdminEnv();
   if (!deps.hasSupabase) {
-    const hasUrl = Boolean(readEnv("SUPABASE_URL") || readEnv("NEXT_PUBLIC_SUPABASE_URL"));
-    const hasServiceRole = Boolean(readEnv("SUPABASE_SERVICE_ROLE_KEY"));
-    const details = `hasSupabaseUrl=${hasUrl} hasServiceRoleKey=${hasServiceRole}`;
+    const details = `hasSupabaseUrl=${adminInfo.hasUrl} hasServiceRoleKey=${adminInfo.hasServiceRoleKey}`;
     throw makeHttpError(
       `[SUPABASE_NOT_CONFIGURED] SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY missing. ${details}`,
+      500
+    );
+  }
+  if (adminInfo.role && adminInfo.role !== "service_role") {
+    throw makeHttpError(
+      `[SUPABASE_INVALID_KEY] SUPABASE_SERVICE_ROLE_KEY has role='${adminInfo.role}', expected 'service_role'.`,
+      500
+    );
+  }
+  if (adminInfo.refMatchesUrl === false) {
+    throw makeHttpError(
+      `[SUPABASE_PROJECT_MISMATCH] SUPABASE_URL ref=${adminInfo.urlRef} but SUPABASE_SERVICE_ROLE_KEY ref=${adminInfo.keyRef}.`,
       500
     );
   }
