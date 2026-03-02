@@ -1,4 +1,6 @@
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 type SupabaseErrorLike = {
@@ -89,8 +91,57 @@ type SubscriptionUpsertInput = {
   priceProId: string;
 };
 
+let parsedLocalEnvCache: Record<string, string> | null = null;
+
+function parseEnvFileContent(raw: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const lines = raw.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const idx = trimmed.indexOf("=");
+    if (idx <= 0) continue;
+    const key = trimmed.slice(0, idx).trim();
+    let value = trimmed.slice(idx + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1).trim();
+    }
+    if (!key) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+function loadLocalEnvFallback() {
+  if (parsedLocalEnvCache) return parsedLocalEnvCache;
+
+  const candidates = [
+    path.resolve(process.cwd(), ".env.local"),
+    path.resolve(process.cwd(), "app-web/.env.local"),
+  ];
+
+  for (const envPath of candidates) {
+    if (!fs.existsSync(envPath)) continue;
+    try {
+      const parsed = parseEnvFileContent(fs.readFileSync(envPath, "utf8"));
+      if (Object.keys(parsed).length > 0) {
+        parsedLocalEnvCache = parsed;
+        return parsedLocalEnvCache;
+      }
+    } catch {
+      // keep trying next candidate
+    }
+  }
+
+  parsedLocalEnvCache = {};
+  return parsedLocalEnvCache;
+}
+
 function readEnv(name: string): string {
-  const raw = process.env[name];
+  const raw = process.env[name] ?? loadLocalEnvFallback()[name];
   if (typeof raw !== "string") return "";
   let value = raw.replace(/\r/g, "").replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
   if (
@@ -161,7 +212,15 @@ function throwSupabaseError(operation: string, err: SupabaseErrorLike): never {
 
 function assertConfiguredForBilling(deps: BillingDeps) {
   if (!deps.stripeSecretKey) throw makeHttpError("[STRIPE_NOT_CONFIGURED] STRIPE_SECRET_KEY missing.", 500);
-  if (!deps.hasSupabase) throw makeHttpError("[SUPABASE_NOT_CONFIGURED] SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY missing.", 500);
+  if (!deps.hasSupabase) {
+    const hasUrl = Boolean(readEnv("SUPABASE_URL") || readEnv("NEXT_PUBLIC_SUPABASE_URL"));
+    const hasServiceRole = Boolean(readEnv("SUPABASE_SERVICE_ROLE_KEY"));
+    const details = `hasSupabaseUrl=${hasUrl} hasServiceRoleKey=${hasServiceRole}`;
+    throw makeHttpError(
+      `[SUPABASE_NOT_CONFIGURED] SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY missing. ${details}`,
+      500
+    );
+  }
 }
 
 function assertConfiguredForWebhook(deps: BillingDeps) {
