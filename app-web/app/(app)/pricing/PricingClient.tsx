@@ -6,11 +6,7 @@ import { useToast } from "@/app/components/Toast";
 import * as supabaseMod from "@/supabaseClient";
 
 const supabase: any = (supabaseMod as any).supabase ?? (supabaseMod as any).default;
-const API_URL = (
-    process.env.NEXT_PUBLIC_API_URL ||
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    "http://localhost:4000"
-).replace(/\/$/, "");
+const BILLING_API_BASE = "/api/stripe";
 
 // Set these in app-web/.env.local
 // NEXT_PUBLIC_STRIPE_PRICE_PRO_MONTHLY=price_...
@@ -91,7 +87,7 @@ export default function PricingClient({
                 const user = data?.user;
                 if (!user) return;
 
-                const resp = await fetch(`${API_URL}/stripe/sync-checkout-session`, {
+                const resp = await fetch(`${BILLING_API_BASE}/sync-checkout-session`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -130,7 +126,7 @@ export default function PricingClient({
                 return;
             }
 
-            const resp = await fetch(`${API_URL}/stripe/create-checkout-session`, {
+            const resp = await fetch(`${BILLING_API_BASE}/create-checkout-session`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -165,7 +161,7 @@ export default function PricingClient({
                 return;
             }
 
-            const resp = await fetch(`${API_URL}/stripe/create-portal-session`, {
+            const resp = await fetch(`${BILLING_API_BASE}/create-portal-session`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ userId: user.id }),
