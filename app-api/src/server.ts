@@ -169,7 +169,7 @@ const TEMPLATE_DIR = process.env.TEMPLATE_DIR
   ? path.resolve(process.env.TEMPLATE_DIR)
   : path.join(process.cwd(), "templates"); // app-api/templates
 
-const MAX_JSON_SIZE = process.env.MAX_JSON_SIZE ?? "6mb";
+const MAX_JSON_SIZE = process.env.MAX_JSON_SIZE ?? "20mb";
 const LATEX_TIMEOUT_MS = Number(process.env.LATEX_TIMEOUT_MS ?? 180000);
 
 const allowedOriginsRaw = readEnv("ALLOWED_ORIGINS");

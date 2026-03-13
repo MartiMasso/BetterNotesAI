@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { supabase } from "@/supabaseClient";
 
 interface AuthModalProps {
@@ -106,9 +107,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess, message }: AuthM
 
                 {/* Header */}
                 <div className="flex items-center gap-2 mb-4">
-                    <div className="h-9 w-9 rounded-xl bg-white/10 border border-white/15 text-white flex items-center justify-center font-semibold">
-                        B
-                    </div>
+                    <Image
+                        src="/brand/logo.png"
+                        alt="BetterNotes logo"
+                        width={36}
+                        height={36}
+                        className="h-9 w-9 object-contain"
+                    />
                     <div className="font-semibold tracking-tight text-white">BetterNotes</div>
                 </div>
 

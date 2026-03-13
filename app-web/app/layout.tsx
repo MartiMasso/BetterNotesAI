@@ -36,6 +36,14 @@ export const metadata: Metadata = {
     description:
       "Upload lecture slides or notes and generate formula sheets, summaries, or cheatsheets as beautiful LaTeX documents in seconds.",
   },
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "64x64", type: "image/x-icon" },
+      { url: "/icon.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
+    shortcut: ["/favicon.ico"],
+  },
 };
 
 export default function RootLayout({

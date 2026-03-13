@@ -10,6 +10,14 @@ import {
 } from "@/lib/api";
 
 type SetupStep = "university" | "program" | "done";
+const INIT_TIMEOUT_MS = 12000;
+
+function withTimeout<T>(promise: Promise<T>, fallback: T, ms = INIT_TIMEOUT_MS): Promise<T> {
+    return Promise.race<T>([
+        promise,
+        new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+    ]);
+}
 
 export default function UniversitiesPage() {
     const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -31,48 +39,73 @@ export default function UniversitiesPage() {
 
     // Load profile + decide setup or tree
     useEffect(() => {
+        let cancelled = false;
         async function init() {
-            const p = await getProfile();
-            setProfile(p);
-            if (!p?.university_id || !p?.degree_program_id) {
+            try {
+                const p = await withTimeout(getProfile(), null);
+                if (cancelled) return;
+
+                setProfile(p);
+                if (!p?.university_id || !p?.degree_program_id) {
+                    setSetupStep("university");
+                    const unis = await withTimeout(listUniversities(), []);
+                    if (cancelled) return;
+                    setUniversities(unis);
+                } else {
+                    // Load subjects for their program
+                    const subs = await withTimeout(listSubjects(p.degree_program_id), []);
+                    if (cancelled) return;
+                    setSubjects(subs);
+                }
+            } catch (e) {
+                console.warn("universities:init error", e);
+                if (cancelled) return;
                 setSetupStep("university");
-                const unis = await listUniversities();
-                setUniversities(unis);
-            } else {
-                // Load subjects for their program
-                const subs = await listSubjects(p.degree_program_id);
-                setSubjects(subs);
+                setUniversities([]);
+                setSubjects([]);
+            } finally {
+                if (!cancelled) setLoading(false);
             }
-            setLoading(false);
         }
         init();
+        return () => { cancelled = true; };
     }, []);
 
     // Load programs when university selected
     useEffect(() => {
         if (!selectedUni) { setPrograms([]); return; }
-        listPrograms(selectedUni).then(setPrograms);
+        let cancelled = false;
+        withTimeout(listPrograms(selectedUni), []).then((items) => {
+            if (!cancelled) setPrograms(items);
+        });
+        return () => { cancelled = true; };
     }, [selectedUni]);
 
     async function handleSelectProgram(programId: string) {
         if (!selectedUni) return;
         setSavingSetup(true);
-        await updateProfile({ university_id: selectedUni, degree_program_id: programId });
-        const subs = await listSubjects(programId);
-        setSubjects(subs);
-        const p = await getProfile();
-        setProfile(p);
-        setSetupStep("done");
-        setSavingSetup(false);
+        try {
+            await withTimeout(updateProfile({ university_id: selectedUni, degree_program_id: programId }), false);
+            const subs = await withTimeout(listSubjects(programId), []);
+            setSubjects(subs);
+            const p = await withTimeout(getProfile(), null);
+            setProfile(p);
+            setSetupStep("done");
+        } finally {
+            setSavingSetup(false);
+        }
     }
 
     async function handleSubjectClick(subject: Subject) {
         setSelectedSubject(subject);
         setDocsLoading(true);
-        // Search documents for this subject
-        const docs = await searchDocuments(subject.name, 20, 0);
-        setSubjectDocs(docs);
-        setDocsLoading(false);
+        try {
+            // Search documents for this subject
+            const docs = await withTimeout(searchDocuments(subject.name, 20, 0), []);
+            setSubjectDocs(docs);
+        } finally {
+            setDocsLoading(false);
+        }
     }
 
     function handleChangeSetup() {

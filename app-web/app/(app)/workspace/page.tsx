@@ -20,8 +20,9 @@ import { useDialog } from "@/app/components/ConfirmDialog";
 type Mode = "start" | "project";
 type Msg = { role: "user" | "assistant"; content: string };
 
-const API_BASE_URL =
-  (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000").replace(/\/$/, "");
+const GENERATE_API_ENDPOINT = "/api/generate-latex";
+const FIX_API_ENDPOINT = "/api/fix-latex";
+const COMPILE_API_ENDPOINT = "/api/compile";
 
 function base64ToUint8Array(base64: string) {
   const bin = atob(base64);
@@ -223,8 +224,10 @@ function WorkspaceContent() {
   const previewOutdated = compiledLatex !== "" && compiledLatex !== savedLatex;
 
   const [pdfUrl, setPdfUrl] = useState<string>(""); // object URL of last valid pdf
+  const [isSending, setIsSending] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isCompiling, setIsCompiling] = useState(false);
+  const sendInFlightRef = useRef(false);
 
   const [compileError, setCompileError] = useState<string>("");
   const [compileLog, setCompileLog] = useState<string>("");
@@ -499,7 +502,7 @@ function WorkspaceContent() {
   }
 
   function busy() {
-    return isGenerating || isCompiling || isFixing;
+    return isSending || isGenerating || isCompiling || isFixing;
   }
 
   // ---------- Core actions ----------
@@ -525,7 +528,7 @@ function WorkspaceContent() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 180000);
 
-      const r = await fetch(`${API_BASE_URL}/generate-latex`, {
+      const r = await fetch(GENERATE_API_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -588,7 +591,7 @@ function WorkspaceContent() {
     if (!savedLatex.trim() || !compileLog.trim()) return;
     setIsFixing(true);
     try {
-      const r = await fetch(`${API_BASE_URL}/fix-latex`, {
+      const r = await fetch(FIX_API_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ latex: savedLatex, log: compileLog }),
@@ -639,7 +642,7 @@ function WorkspaceContent() {
 
   // ---------- Send flows ----------
 
-  async function processFilesForPayload(currentFiles: FileAttachment[]): Promise<{ type: 'image' | 'text' | 'document'; url?: string; data?: string; name: string }[]> {
+  async function processFilesForPayload(currentFiles: FileAttachment[]): Promise<{ type: 'image' | 'text' | 'document'; url?: string; data?: string; name: string; mimeType?: string }[]> {
     if (currentFiles.length === 0) return [];
 
     // Determine upload method
@@ -649,12 +652,12 @@ function WorkspaceContent() {
       // If auth, try upload to storage
       if (isAuth && user) {
         // Import dynamically or assume imported
-        const { uploadFileToStorage, fileToBase64 } = await import("../../../lib/storage");
+        const { uploadFileToStorage } = await import("../../../lib/storage");
 
         // For images/docs, upload to storage
         const publicUrl = await uploadFileToStorage(f.file, user.id);
         if (publicUrl) {
-          return { type: f.type, url: publicUrl, name: f.file.name };
+          return { type: f.type, url: publicUrl, name: f.file.name, mimeType: f.file.type || undefined };
         }
         // Fallback to base64 if upload fails? Or just fail? Let's fallback to base64 for resilience if small enough
         console.warn("Upload failed, falling back to base64");
@@ -663,7 +666,7 @@ function WorkspaceContent() {
       // Anonymous or fallback: Base64
       const { fileToBase64 } = await import("../../../lib/storage");
       const b64 = await fileToBase64(f.file);
-      return { type: f.type, data: b64, name: f.file.name };
+      return { type: f.type, data: b64, name: f.file.name, mimeType: f.file.type || undefined };
     }));
 
     return processed;
@@ -712,17 +715,19 @@ function WorkspaceContent() {
     const text = startInput.trim();
     const hasFiles = files.length > 0;
 
-    if ((!text && !hasFiles) || busy()) return;
-
-    const allowed = await canSendMessage();
-    if (!allowed) return;
-
-    setMode("project");
-    setStartInput("");
-    setProjectInput("");
+    if ((!text && !hasFiles) || busy() || sendInFlightRef.current) return;
 
     let loadingInterval: ReturnType<typeof setInterval> | null = null;
+    sendInFlightRef.current = true;
+    setIsSending(true);
     try {
+      const allowed = await canSendMessage();
+      if (!allowed) return;
+
+      setMode("project");
+      setStartInput("");
+      setProjectInput("");
+
       setMessages((m) => [
         ...m,
         { role: "user", content: text || (hasFiles ? `[Sent ${files.length} file(s)]` : "") },
@@ -748,6 +753,8 @@ function WorkspaceContent() {
       setMessages((m) => replaceLastWorking(m, `Error: ${e?.message ?? "Send failed."}`));
     } finally {
       if (loadingInterval) clearInterval(loadingInterval);
+      sendInFlightRef.current = false;
+      setIsSending(false);
     }
   }
 
@@ -755,15 +762,17 @@ function WorkspaceContent() {
     const text = projectInput.trim();
     const hasFiles = files.length > 0;
 
-    if ((!text && !hasFiles) || busy()) return;
-
-    const allowed = await canSendMessage();
-    if (!allowed) return;
-
-    setProjectInput("");
+    if ((!text && !hasFiles) || busy() || sendInFlightRef.current) return;
 
     let loadingInterval: ReturnType<typeof setInterval> | null = null;
+    sendInFlightRef.current = true;
+    setIsSending(true);
     try {
+      const allowed = await canSendMessage();
+      if (!allowed) return;
+
+      setProjectInput("");
+
       setMessages((m) => [
         ...m,
         { role: "user", content: text || (hasFiles ? `[Sent ${files.length} file(s)]` : "") },
@@ -790,6 +799,8 @@ function WorkspaceContent() {
       setMessages((m) => replaceLastWorking(m, `Error: ${e?.message ?? "Send failed."}`));
     } finally {
       if (loadingInterval) clearInterval(loadingInterval);
+      sendInFlightRef.current = false;
+      setIsSending(false);
     }
   }
 
@@ -847,7 +858,7 @@ function WorkspaceContent() {
       setIsCompiling(true);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 180000);
-      const r = await fetch(`${API_BASE_URL}/compile`, {
+      const r = await fetch(COMPILE_API_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ latex }),
@@ -1040,9 +1051,10 @@ function WorkspaceContent() {
 
                 <button
                   onClick={projectSend}
+                  disabled={(projectInput.trim().length === 0 && files.length === 0) || busy()}
                   className={["h-10 rounded-xl px-4 text-sm font-semibold self-end", (projectInput.trim().length > 0 || files.length > 0) && !busy() ? "bg-white text-neutral-950 hover:bg-white/90" : "bg-white/20 text-white/60 cursor-not-allowed"].join(" ")}
                 >
-                  {isGenerating ? "Generating…" : isCompiling ? "Compiling…" : isFixing ? "Fixing…" : "Send"}
+                  {isSending ? "Sending…" : isGenerating ? "Generating…" : isCompiling ? "Compiling…" : isFixing ? "Fixing…" : "Send"}
                 </button>
               </div>
             </div>
@@ -1209,7 +1221,14 @@ function WorkspaceContent() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
                 </svg>
               </button>
-              <button data-auto-send onClick={startSend} className={["h-10 rounded-xl px-4 text-sm font-semibold", startInput.trim() || files.length > 0 ? "bg-white text-neutral-950" : "bg-white/20 text-white/60"].join(" ")}>{isGenerating ? "Generating…" : "Send"}</button>
+              <button
+                data-auto-send
+                onClick={startSend}
+                disabled={(!startInput.trim() && files.length === 0) || busy()}
+                className={["h-10 rounded-xl px-4 text-sm font-semibold", (startInput.trim() || files.length > 0) && !busy() ? "bg-white text-neutral-950" : "bg-white/20 text-white/60 cursor-not-allowed"].join(" ")}
+              >
+                {isSending ? "Sending…" : isGenerating ? "Generating…" : "Send"}
+              </button>
             </div>
           </div>
           <input

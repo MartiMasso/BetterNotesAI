@@ -1,6 +1,7 @@
 // app-api/src/routes/latex.ts
 import express from "express";
 import OpenAI from "openai";
+import path from "path";
 import { loadTemplateOrThrow, findPlaceholder } from "../lib/templates";
 import { applyLatexFallbacks, stripMarkdownFences, compileLatexToPdf, compileMultiFileProject } from "../lib/latex";
 import { trimHugeLog } from "../lib/errors";
@@ -12,41 +13,150 @@ type LatexDeps = {
   latexTimeoutMs: number;
 };
 
+type IncomingAttachment = {
+  type: string;
+  url?: string;
+  data?: string;
+  name: string;
+  mimeType?: string;
+};
+
+const MAX_FILE_CONTEXT_CHARS = 12000;
+const MAX_TOTAL_FILE_CONTEXT_CHARS = 45000;
+
+function getFileExt(fileName: string) {
+  return path.extname(fileName || "").toLowerCase();
+}
+
+function isImageAttachment(file: IncomingAttachment) {
+  const mime = (file.mimeType ?? "").toLowerCase();
+  const ext = getFileExt(file.name);
+  return (
+    file.type === "image" ||
+    mime.startsWith("image/") ||
+    [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"].includes(ext)
+  );
+}
+
+function looksLikeTextFile(file: IncomingAttachment, mimeType: string | null) {
+  const mime = (mimeType ?? file.mimeType ?? "").toLowerCase();
+  const ext = getFileExt(file.name);
+  if (mime.startsWith("text/")) return true;
+  return [
+    ".txt",
+    ".md",
+    ".csv",
+    ".tex",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".xml",
+    ".html",
+    ".log",
+    ".tsv",
+  ].includes(ext);
+}
+
+function parseDataInput(rawData: string): { buffer: Buffer; mimeType: string | null } {
+  const data = (rawData || "").trim();
+  if (!data) throw new Error("Empty attachment payload.");
+
+  if (data.startsWith("data:")) {
+    const commaIdx = data.indexOf(",");
+    if (commaIdx === -1) throw new Error("Malformed data URL.");
+
+    const header = data.slice(5, commaIdx);
+    const payload = data.slice(commaIdx + 1);
+    const [mimePart] = header.split(";");
+    const mimeType = mimePart?.trim() || null;
+    const isBase64 = header.includes(";base64");
+    const buffer = isBase64
+      ? Buffer.from(payload, "base64")
+      : Buffer.from(decodeURIComponent(payload), "utf8");
+    return { buffer, mimeType };
+  }
+
+  return { buffer: Buffer.from(data, "base64"), mimeType: null };
+}
+
+async function loadAttachmentBytes(file: IncomingAttachment): Promise<{ buffer: Buffer; mimeType: string | null }> {
+  if (file.data) return parseDataInput(file.data);
+
+  if (file.url) {
+    const r = await fetch(file.url);
+    if (!r.ok) throw new Error(`Could not fetch file (${r.status}).`);
+
+    const contentType = (r.headers.get("content-type") ?? "")
+      .split(";")[0]
+      .trim()
+      .toLowerCase() || null;
+    const arr = await r.arrayBuffer();
+    return { buffer: Buffer.from(arr), mimeType: contentType };
+  }
+
+  throw new Error("File has no url or data.");
+}
+
+async function extractReadableText(file: IncomingAttachment, buffer: Buffer, mimeType: string | null) {
+  const ext = getFileExt(file.name);
+  const mime = (mimeType ?? file.mimeType ?? "").toLowerCase();
+
+  if (looksLikeTextFile(file, mimeType)) {
+    return buffer.toString("utf8");
+  }
+
+  if (mime === "application/pdf" || ext === ".pdf") {
+    const pdfParse = require("pdf-parse") as (input: Buffer) => Promise<{ text?: string }>;
+    const result = await pdfParse(buffer);
+    return (result?.text ?? "").trim();
+  }
+
+  if (
+    mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    ext === ".docx"
+  ) {
+    const mammoth = require("mammoth") as {
+      extractRawText: (args: { buffer: Buffer }) => Promise<{ value?: string }>;
+    };
+    const result = await mammoth.extractRawText({ buffer });
+    return (result?.value ?? "").trim();
+  }
+
+  throw new Error("Unsupported file type. Use image, PDF, DOCX, TXT, MD, or CSV.");
+}
+
 export function createLatexRouter(deps: LatexDeps) {
   const router = express.Router();
 
-  async function extractFileContent(file: { type: string; url?: string; data?: string; name: string }): Promise<string | { type: "image_url"; image_url: { url: string } }> {
-    // Images: Pass URL or Base64 directly to OpenAI
-    if (file.type === 'image') {
+  async function extractFileContent(file: IncomingAttachment): Promise<string | { type: "image_url"; image_url: { url: string } }> {
+    if (isImageAttachment(file)) {
       return {
         type: "image_url",
         image_url: {
-          url: file.url || file.data || ""
-        }
+          url: file.url || file.data || "",
+        },
       };
     }
 
-    // Text/Docs: Extract content
-    let content = "";
-    if (file.url) {
-      try {
-        const r = await fetch(file.url);
-        if (r.ok) content = await r.text();
-        else content = `[Error fetching file ${file.name}]`;
-      } catch (e) {
-        content = `[Error fetching file ${file.name}]`;
-      }
-    } else if (file.data) {
-      // decode base64 if it's data url "data:text/plain;base64,..."
-      try {
-        const base64 = file.data.split(',')[1] || file.data;
-        content = Buffer.from(base64, 'base64').toString('utf-8');
-      } catch (e) {
-        content = `[Error decoding file ${file.name}]`;
-      }
-    }
+    try {
+      const { buffer, mimeType } = await loadAttachmentBytes(file);
+      const text = await extractReadableText(file, buffer, mimeType);
+      const normalized = (text || "").replace(/\u0000/g, "").trim();
 
-    return `\n=== FILE: ${file.name} ===\n${content}\n==================\n`;
+      if (!normalized) {
+        return `\n=== FILE: ${file.name} ===\n[No readable text found in this file.]\n==================\n`;
+      }
+
+      const clipped =
+        normalized.length > MAX_FILE_CONTEXT_CHARS
+          ? `${normalized.slice(0, MAX_FILE_CONTEXT_CHARS)}\n[Attachment truncated to fit model context.]`
+          : normalized;
+
+      return `\n=== FILE: ${file.name} ===\n${clipped}\n==================\n`;
+    } catch (err: any) {
+      const message = err?.message ? String(err.message) : "Unknown extraction error";
+      return `\n=== FILE: ${file.name} ===\n[Could not extract text: ${message}]\n==================\n`;
+    }
   }
 
   async function generateLatexFromPrompt(args: {
@@ -55,19 +165,26 @@ export function createLatexRouter(deps: LatexDeps) {
     templateSource: string;
     wantOnlyBody: boolean;
     baseLatex?: string;
-    files?: any[];
+    files?: IncomingAttachment[];
   }): Promise<{ latex?: string; message?: string }> {
     const { prompt, templateId, templateSource, wantOnlyBody, baseLatex, files } = args;
 
     // Build content with files
     const userContent: any[] = [{ type: "text", text: "" }];
     let fileTextContext = "";
+    let remainingFileBudget = MAX_TOTAL_FILE_CONTEXT_CHARS;
 
     if (files && files.length > 0) {
       for (const f of files) {
         const extracted = await extractFileContent(f);
-        if (typeof extracted === 'string') {
-          fileTextContext += extracted;
+        if (typeof extracted === "string") {
+          if (remainingFileBudget <= 0) continue;
+          const clipped =
+            extracted.length > remainingFileBudget
+              ? `${extracted.slice(0, remainingFileBudget)}\n[More attachment context was omitted due to token limits.]\n`
+              : extracted;
+          fileTextContext += clipped;
+          remainingFileBudget -= clipped.length;
         } else {
           userContent.push(extracted);
         }
@@ -221,7 +338,17 @@ export function createLatexRouter(deps: LatexDeps) {
       const templateId = String(req.body?.templateId ?? "2cols_portrait").trim();
       const baseLatexTrimmed = String(req.body?.baseLatex ?? "");
       const hasBaseLatex = baseLatexTrimmed.trim().length > 0;
-      const files = Array.isArray(req.body?.files) ? req.body.files : []; // [{type, url/data, name}]
+      const files: IncomingAttachment[] = Array.isArray(req.body?.files)
+        ? req.body.files
+          .filter((f: any) => f && typeof f === "object")
+          .map((f: any) => ({
+            type: String(f.type ?? "document"),
+            url: typeof f.url === "string" ? f.url : undefined,
+            data: typeof f.data === "string" ? f.data : undefined,
+            name: typeof f.name === "string" && f.name.trim() ? f.name : "attachment",
+            mimeType: typeof f.mimeType === "string" ? f.mimeType : undefined,
+          }))
+        : [];
 
       if (!prompt && files.length === 0) return res.status(400).json({ ok: false, error: "Missing 'prompt' or 'files'." });
 

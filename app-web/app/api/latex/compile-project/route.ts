@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   const contentType = req.headers.get("content-type") ?? "application/json";
 
   try {
-    const upstream = await fetch(`${baseUrl}/compile`, {
+    const upstream = await fetch(`${baseUrl}/latex/compile-project`, {
       method: "POST",
       headers: { "Content-Type": contentType },
       body,

@@ -1024,7 +1024,7 @@ export interface UserProfile {
  */
 export async function getProfile(): Promise<UserProfile | null> {
     try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getCurrentUser();
         if (!user) return null;
 
         const { data, error } = await supabase

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import Background from "../components/Background";
 import { supabase } from "@/supabaseClient";
 
@@ -54,9 +55,13 @@ export default function ForgotPasswordPage() {
             <div className="mx-auto flex min-h-[calc(100vh-80px)] max-w-md items-center px-4 py-8">
                 <div className="w-full rounded-2xl border border-white/20 bg-white/10 p-6 backdrop-blur">
                     <div className="flex items-center gap-2 mb-4">
-                        <div className="h-9 w-9 rounded-xl bg-white/10 border border-white/15 text-white flex items-center justify-center font-semibold">
-                            B
-                        </div>
+                        <Image
+                            src="/brand/logo.png"
+                            alt="BetterNotes logo"
+                            width={36}
+                            height={36}
+                            className="h-9 w-9 object-contain"
+                        />
                         <div className="font-semibold tracking-tight">BetterNotes</div>
                     </div>
 

@@ -10,7 +10,7 @@ export async function fileToBase64(file: File): Promise<string> {
 }
 
 /**
- * Legacy: Upload file to the old 'user-files' bucket (Phase 1 compat)
+ * Upload file to the user-files bucket and return a temporary signed URL.
  */
 export async function uploadFileToStorage(file: File, userId: string): Promise<string | null> {
     try {
@@ -27,11 +27,16 @@ export async function uploadFileToStorage(file: File, userId: string): Promise<s
             return null;
         }
 
-        const { data } = supabase.storage
+        const { data, error: signedErr } = await supabase.storage
             .from('user-files')
-            .getPublicUrl(filePath);
+            .createSignedUrl(filePath, 3600);
 
-        return data.publicUrl;
+        if (signedErr) {
+            console.error('Error creating signed URL for file:', signedErr);
+            return null;
+        }
+
+        return data?.signedUrl || null;
     } catch (error) {
         console.error('Exception uploading file:', error);
         return null;

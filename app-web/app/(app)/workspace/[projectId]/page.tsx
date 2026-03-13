@@ -29,7 +29,10 @@ interface OutputEntry {
     dirty: boolean;
 }
 
-const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000").replace(/\/$/, "");
+const GENERATE_API_ENDPOINT = "/api/generate-latex";
+const FIX_API_ENDPOINT = "/api/fix-latex";
+const COMPILE_API_ENDPOINT = "/api/compile";
+const COMPILE_PROJECT_API_ENDPOINT = "/api/latex/compile-project";
 
 export default function ProjectWorkspace() {
     const { projectId } = useParams<{ projectId: string }>();
@@ -96,8 +99,10 @@ export default function ProjectWorkspace() {
     const [isGenerating, setIsGenerating] = useState(false);
     const [isCompiling, setIsCompiling] = useState(false);
     const [isFixing, setIsFixing] = useState(false);
+    const [isSending, setIsSending] = useState(false);
     const [compileError, setCompileError] = useState("");
     const [compileLog, setCompileLog] = useState("");
+    const sendInFlightRef = useRef(false);
 
     // Auto-compile flag
     const pendingAutoCompile = useRef(false);
@@ -125,7 +130,7 @@ export default function ProjectWorkspace() {
     const activeContent = activeEntry?.content ?? "";
     const mainTex = outputFiles.find((f) => f.filePath === "main.tex");
     const anyDirty = outputFiles.some((f) => f.dirty);
-    const busy = () => isGenerating || isCompiling || isFixing;
+    const busy = () => isSending || isGenerating || isCompiling || isFixing;
 
     // ── Auth ──
     useEffect(() => {
@@ -344,7 +349,7 @@ export default function ProjectWorkspace() {
 
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 180000);
-            const r = await fetch(`${API_BASE_URL}/generate-latex`, {
+            const r = await fetch(GENERATE_API_ENDPOINT, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
@@ -403,7 +408,7 @@ export default function ProjectWorkspace() {
 
             // Use single-file or multi-file endpoint
             const isMultiFile = texFiles.length > 1;
-            const endpoint = isMultiFile ? `${API_BASE_URL}/latex/compile-project` : `${API_BASE_URL}/compile`;
+            const endpoint = isMultiFile ? COMPILE_PROJECT_API_ENDPOINT : COMPILE_API_ENDPOINT;
             const body = isMultiFile
                 ? { files: filesPayload, mainFile: "main.tex" }
                 : { latex: mainTex?.content || texFiles[0].content };
@@ -463,7 +468,7 @@ export default function ProjectWorkspace() {
         if (!current?.trim() || !compileLog.trim()) return;
         setIsFixing(true);
         try {
-            const r = await fetch(`${API_BASE_URL}/fix-latex`, {
+            const r = await fetch(FIX_API_ENDPOINT, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ latex: current, log: compileLog }),
@@ -490,14 +495,16 @@ export default function ProjectWorkspace() {
     // ═══ Send message ═══
     async function handleSend() {
         const text = chatInput.trim();
-        if (!text || busy()) return;
-        const allowed = await canSendMessage();
-        if (!allowed) return;
+        if (!text || busy() || sendInFlightRef.current) return;
 
+        sendInFlightRef.current = true;
+        setIsSending(true);
         try {
+            const allowed = await canSendMessage();
+            if (!allowed) return;
+
             setChatInput("");
             // Clear one-shot template override after use
-            const usedTemplate = templateOverride;
             setTemplateOverride(null);
             setMessages((m) => [...m, { role: "user", content: text }, { role: "assistant", content: "Working… generating document..." }]);
 
@@ -542,6 +549,9 @@ export default function ProjectWorkspace() {
             await savePromise;
         } catch (e: unknown) {
             setMessages((m) => replaceLastWorking(m, `Error: ${(e as Error)?.message ?? "Send failed."}`));
+        } finally {
+            sendInFlightRef.current = false;
+            setIsSending(false);
         }
     }
 
@@ -777,12 +787,13 @@ export default function ProjectWorkspace() {
                         />
                         <button
                             onClick={handleSend}
+                            disabled={!chatInput.trim() || busy()}
                             className={`h-10 rounded-xl px-4 text-sm font-semibold ${chatInput.trim() && !busy()
                                 ? "bg-white text-neutral-950 hover:bg-white/90"
                                 : "bg-white/15 text-white/40 cursor-not-allowed"
                                 }`}
                         >
-                            {isGenerating ? "…" : "Send"}
+                            {isSending ? "Sending…" : isGenerating ? "…" : "Send"}
                         </button>
                     </div>
                 </div>
