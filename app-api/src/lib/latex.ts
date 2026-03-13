@@ -21,6 +21,21 @@ async function commandExists(cmd: string): Promise<boolean> {
   }
 }
 
+function detectMissingStyPackage(log: string): string | null {
+  if (!log) return null;
+  const match = log.match(/File `([^`]+\.sty)' not found\./);
+  if (!match?.[1]) return null;
+  return match[1];
+}
+
+function buildMissingPackageMessage(packageFile: string): string {
+  return [
+    `LaTeX package missing: ${packageFile}.`,
+    "Install the missing package in your TeX distribution (for example: tlmgr install <package>)",
+    "or run app-api with Docker (its image already includes texlive-latex-extra).",
+  ].join(" ");
+}
+
 /* -------------------------
    fallbacks (compilation-safety)
 ------------------------- */
@@ -127,12 +142,14 @@ export function injectCommonMathFallbacks(latex: string): string {
   const wantsNorm = /\\norm\s*\{/.test(latex);
   const wantsColoneqq = /\\coloneqq\b/.test(latex);
   const wantsGenerated = /\\generated\s*\{/.test(latex);
+  const wantsSlashed = /\\slashed\s*\{/.test(latex);
 
   const defs: string[] = [marker];
   if (wantsAbs) defs.push("\\providecommand{\\abs}[1]{\\left|#1\\right|}");
   if (wantsNorm) defs.push("\\providecommand{\\norm}[1]{\\left\\|#1\\right\\|}");
   if (wantsColoneqq) defs.push("\\providecommand{\\coloneqq}{\\mathrel{:=}}");
   if (wantsGenerated) defs.push("\\providecommand{\\generated}[1]{(\\min\\{#1\\},\\max\\{#1\\})}");
+  if (wantsSlashed) defs.push("\\providecommand{\\slashed}[1]{\\not\\!#1}");
 
   if (defs.length === 1) return latex;
 
@@ -216,6 +233,15 @@ export async function compileLatexToPdf(
       }
 
       const trimmed = trimHugeLog(log);
+      const missingPackage = detectMissingStyPackage(trimmed);
+      if (missingPackage) {
+        throw makeHttpError(
+          buildMissingPackageMessage(missingPackage),
+          422,
+          trimmed,
+          "LATEX_MISSING_PACKAGE"
+        );
+      }
       const isTimeout = trimmed.includes("Timeout") || trimmed.includes("ETIMEDOUT");
       throw makeHttpError(
         "LaTeX compilation failed.",
@@ -356,6 +382,15 @@ export async function compileMultiFileProject(
         log += await fs.promises.readFile(texLogPath, "utf8");
       }
       const trimmed = trimHugeLog(log);
+      const missingPackage = detectMissingStyPackage(trimmed);
+      if (missingPackage) {
+        throw makeHttpError(
+          buildMissingPackageMessage(missingPackage),
+          422,
+          trimmed,
+          "LATEX_MISSING_PACKAGE"
+        );
+      }
       const isTimeout = trimmed.includes("Timeout") || trimmed.includes("ETIMEDOUT");
       throw makeHttpError(
         "Multi-file LaTeX compilation failed.",

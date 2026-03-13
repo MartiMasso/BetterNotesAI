@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/supabaseClient";
 import type { User } from "@supabase/supabase-js";
@@ -49,9 +50,13 @@ export default function Navbar() {
     <>
       <header className="relative z-10 mx-auto max-w-6xl px-4 py-5 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
-          <div className="h-9 w-9 rounded-xl bg-white/10 border border-white/15 text-white flex items-center justify-center font-semibold shadow-sm backdrop-blur">
-            B
-          </div>
+          <Image
+            src="/brand/logo.png"
+            alt="BetterNotes logo"
+            width={36}
+            height={36}
+            className="h-9 w-9 object-contain"
+          />
           <div className="font-semibold tracking-tight">BetterNotes</div>
         </Link>
 

@@ -39,7 +39,8 @@ Start writing here\\ldots
 \\end{document}
 `;
 
-const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000").replace(/\/$/, "");
+const COMPILE_API_ENDPOINT = "/api/compile";
+const COMPILE_PROJECT_API_ENDPOINT = "/api/latex/compile-project";
 
 // ── Main wrapper with Suspense for useSearchParams ──
 export default function PlaygroundPage() {
@@ -332,7 +333,7 @@ function PlaygroundContent() {
             const filesPayload = texFiles.map((f) => ({ path: f.path, content: f.content }));
             const mainTex = texFiles.find((f) => f.path === "main.tex");
 
-            const endpoint = isMultiFile ? `${API_BASE_URL}/latex/compile-project` : `${API_BASE_URL}/compile`;
+            const endpoint = isMultiFile ? COMPILE_PROJECT_API_ENDPOINT : COMPILE_API_ENDPOINT;
             const body = isMultiFile
                 ? { files: filesPayload, mainFile: "main.tex" }
                 : { latex: mainTex?.content || texFiles[0].content };
